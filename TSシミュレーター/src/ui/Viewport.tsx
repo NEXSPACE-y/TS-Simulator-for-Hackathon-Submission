@@ -19,13 +19,23 @@ export function Viewport(props: { quality: Quality }) {
   const host = useRef<HTMLDivElement>(null);
   const scope = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
-  const [view, setView] = useState<ViewName>('overview');
+  const [view, setViewState] = useState<ViewName>('overview');
+  const viewRef = useRef<ViewName>('overview');
   const [error, setError] = useState<string | null>(null);
+  const changeView = useCallback((v: ViewName) => {
+    viewRef.current = v;
+    setViewState(v);
+    engine.current?.setView(v);
+  }, []);
 
   useEffect(() => {
     if (!host.current) return;
     try {
-      engine.current = new Engine(host.current, bridge, props.quality);
+      const e = new Engine(host.current, bridge, props.quality);
+      // 画質の切り替えで作り直したときも、今の視点と望遠鏡の視野を引き継ぐ
+      e.setView(viewRef.current, true);
+      e.setTelescopeElement(scope.current);
+      engine.current = e;
     } catch (e) {
       setError(`3Dを表示できませんでした（WebGLが使えない可能性があります）：${String(e)}`);
     }
@@ -37,10 +47,8 @@ export function Viewport(props: { quality: Quality }) {
 
   // ステップが変わったら、カメラの寄り先を変える
   useEffect(() => {
-    const v = viewForStep(ui.mode, ui.currentStep);
-    setView(v);
-    engine.current?.setView(v);
-  }, [ui.mode, ui.currentStep, ui.phase]);
+    changeView(viewForStep(ui.mode, ui.currentStep));
+  }, [ui.mode, ui.currentStep, ui.phase, changeView]);
 
   const observing = ui.phase === 'observation' && ui.currentStep >= 9;
   useEffect(() => {
@@ -59,10 +67,7 @@ export function Viewport(props: { quality: Quality }) {
             key={v.id}
             type="button"
             className={view === v.id ? 'is-on' : ''}
-            onClick={() => {
-              setView(v.id);
-              engine.current?.setView(v.id);
-            }}
+            onClick={() => changeView(v.id)}
           >
             {v.label}
           </button>

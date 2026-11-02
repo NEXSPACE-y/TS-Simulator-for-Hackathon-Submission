@@ -1,6 +1,6 @@
 // 操作盤の部品（押している間だけ動くボタンなど）
 
-import { useCallback, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Frame } from '../bridge';
 import { fixed } from '../bridge/format';
 import type { HoldIntent, SpeedLevel } from './input';
@@ -27,6 +27,11 @@ export function HoldButton(props: {
     input.release(id);
     setActive(false);
   };
+  // 押したまま消えたり使えなくなったりしたボタンが、操作を送り続けないようにする
+  useEffect(() => () => input.release(id), [input, id]);
+  useEffect(() => {
+    if (props.disabled) input.release(id);
+  }, [props.disabled, input, id]);
   return (
     <button
       type="button"
@@ -59,6 +64,11 @@ export function PairButton(props: { intents: HoldIntent[]; children: ReactNode; 
     props.intents.forEach((_, i) => input.release(`${id}:${i}`));
     setActive(false);
   };
+  const count = props.intents.length;
+  useEffect(() => () => releasePair(input, id, count), [input, id, count]);
+  useEffect(() => {
+    if (props.disabled) releasePair(input, id, count);
+  }, [props.disabled, input, id, count]);
   return (
     <button
       type="button"
@@ -73,6 +83,10 @@ export function PairButton(props: { intents: HoldIntent[]; children: ReactNode; 
       {props.children}
     </button>
   );
+}
+
+function releasePair(input: { release(id: string): void }, id: string, count: number): void {
+  for (let i = 0; i < count; i++) input.release(`${id}:${i}`);
 }
 
 /** 速さ（粗・中・微） */

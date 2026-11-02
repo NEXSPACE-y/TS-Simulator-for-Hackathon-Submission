@@ -137,7 +137,10 @@ export class Engine {
     cancelAnimationFrame(this.raf);
     this.observer.disconnect();
     this.controls.dispose();
+    this.world.dispose();
     this.renderer.dispose();
+    // 画質の切り替えのたびに WebGL の文脈がたまらないよう、すぐに手放す
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
   }
 

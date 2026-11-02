@@ -101,11 +101,15 @@ export class InputManager {
         this.holds.set(`key:${e.code}`, hold);
         return;
       }
+      if (e.code === 'Enter' && ctx.phase === 'observation' && ctx.step >= 9) {
+        // 選ばれているボタン（「測量」など）の Enter は打ち消して、測量を1回だけ送る
+        e.preventDefault();
+        if (!e.repeat) this.bridge.send('observe');
+        return;
+      }
       if (e.repeat) return;
       if (e.code === 'KeyT' && ctx.phase === 'setup') {
         this.bridge.send('setClamp', ctx.clampTight ? 0 : 1);
-      } else if (e.code === 'Enter' && ctx.phase === 'observation' && ctx.step >= 9) {
-        this.bridge.send('observe');
       }
     };
     const up = (e: KeyboardEvent) => {

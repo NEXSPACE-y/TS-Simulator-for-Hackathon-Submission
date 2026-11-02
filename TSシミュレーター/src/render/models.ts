@@ -327,6 +327,21 @@ export class World {
   }
 
   /** コアの結果を3Dに当てはめる */
+  /** 形・材質・画像を GPU から片付ける */
+  dispose(): void {
+    this.scene.traverse((obj) => {
+      const mesh = obj as Partial<THREE.Mesh>;
+      mesh.geometry?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+      for (const m of mats) {
+        for (const v of Object.values(m)) {
+          if (v instanceof THREE.Texture) v.dispose();
+        }
+        m.dispose();
+      }
+    });
+  }
+
   update(f: Frame, phase: 'setup' | 'setupResult' | 'observation'): void {
     const d = f.data;
     const o = f.o;
