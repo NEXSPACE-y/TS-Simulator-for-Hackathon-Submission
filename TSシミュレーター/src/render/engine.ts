@@ -18,6 +18,8 @@ const QUALITY: Record<Quality, { pixelRatioCap: number; shadows: boolean; antial
 
 /** 望遠鏡の視野 [度] */
 const TELESCOPE_FOV_DEG = 1.5;
+/** 照準器でのぞいたときの視野 [度]（表示の広さだけ） */
+const PEEP_SIGHT_FOV_DEG = 30;
 /** カメラを寄せる時間 [s] */
 const VIEW_ANIM_SEC = 0.7;
 
@@ -195,6 +197,7 @@ export class Engine {
     pointAt(f.data, f.o.trunnion, this.telCamera.position);
     const dir = pointAt(f.data, f.o.telDir, this.tmp).multiplyScalar(1000);
     this.telCamera.lookAt(this.tmp2.copy(this.telCamera.position).add(dir));
+    this.telCamera.fov = (f.data[f.o.peepSight] ?? 0) > 0.5 ? PEEP_SIGHT_FOV_DEG : TELESCOPE_FOV_DEG;
     this.telCamera.aspect = vw / vh;
     this.telCamera.updateProjectionMatrix();
     r.setScissorTest(true);

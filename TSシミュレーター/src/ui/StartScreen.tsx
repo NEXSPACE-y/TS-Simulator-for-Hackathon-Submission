@@ -58,6 +58,9 @@ export function StartScreen(props: {
             <li>A・B を内側へ：<kbd>S</kbd>＋<kbd>K</kbd>　外側へ：<kbd>A</kbd>＋<kbd>L</kbd></li>
             <li>脚を伸ばす：<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>　縮める：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd></li>
             <li>三脚・器械・望遠鏡を動かす：矢印キー　定心桿：<kbd>T</kbd>　細かく：<kbd>Shift</kbd></li>
+            <li>
+              観測：照準器と望遠鏡の切り替え <kbd>P</kbd>　接眼レンズ <kbd>V</kbd>／<kbd>B</kbd>　合焦 <kbd>F</kbd>（近く）／<kbd>G</kbd>（遠く）　測量 <kbd>Enter</kbd>
+            </li>
           </ul>
         </details>
         <p className="fine">タイムは最初の操作で始まり、「据付完了」を押すと止まります。目安：3分で合格、2分で熟練。</p>

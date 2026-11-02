@@ -60,7 +60,7 @@ export function Viewport(props: { quality: Quality }) {
       <div className="three-host" ref={host} />
       {error && <div className="view-error">{error}</div>}
       {ui.phase !== 'observation' && <ZoomPanels />}
-      {observing && <TelescopeOverlay ref={scope} />}
+      {observing && <TelescopeOverlay ref={scope} peep={ui.observation.peepSight} />}
       <div className="view-switch" role="group" aria-label="視点切替">
         {VIEWS.map((v) => (
           <button
@@ -178,24 +178,132 @@ function ZoomPanels() {
   );
 }
 
-function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement> }) {
+type ScopeSize = 'small' | 'medium' | 'large';
+const SCOPE_SIZES: { id: ScopeSize; label: string }[] = [
+  { id: 'small', label: '小' },
+  { id: 'medium', label: '中' },
+  { id: 'large', label: '大' },
+];
+/** ターゲットのぼけの見た目の最大 [px]（表示の大きさだけ） */
+const TARGET_BLUR_MAX_PX = 10;
+/** 十字線のぼけの見た目の最大（視野の座標。直径100） */
+const RETICLE_BLUR_MAX = 1.6;
+
+function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean }) {
+  const [size, setSize] = useState<ScopeSize>('medium');
+  const blur = useRef<HTMLDivElement>(null);
+  const lastBlur = useRef('');
+  const reticle = useRef<SVGGElement>(null);
+  const reticleBlur = useRef<SVGFEGaussianBlurElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+
+  // ぼけの量はコアが決める（0〜1）。ここでは見た目の大きさに置き換えるだけ
+  useFrame(
+    useCallback(
+      (f: Frame) => {
+        const tb = props.peep ? 0 : (f.data[f.o.targetBlur] ?? 0) * TARGET_BLUR_MAX_PX;
+        const filter = tb > 0.05 ? `blur(${tb.toFixed(1)}px)` : 'none';
+        const el = blur.current;
+        if (el && lastBlur.current !== filter) {
+          lastBlur.current = filter;
+          el.style.backdropFilter = filter;
+          el.style.setProperty('-webkit-backdrop-filter', filter);
+        }
+        const rb = (f.data[f.o.reticleBlur] ?? 0) * RETICLE_BLUR_MAX;
+        setAttr(reticleBlur.current, 'stdDeviation', rb.toFixed(2));
+        setAttr(reticle.current, 'filter', rb > 0.01 ? 'url(#scope-reticle-blur)' : 'none');
+      },
+      [props.peep],
+    ),
+  );
+
+  // 視野の枠は、下の帯をつかんで動かせる（画面の中だけ）
+  const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.parentElement;
+    const host = box?.parentElement;
+    if (!box || !host) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const r = box.getBoundingClientRect();
+    const h = host.getBoundingClientRect();
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: r.left - h.left, top: r.top - h.top };
+  };
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    const box = e.currentTarget.parentElement;
+    const host = box?.parentElement;
+    if (!d || d.id !== e.pointerId || !box || !host) return;
+    const maxLeft = Math.max(0, host.clientWidth - box.offsetWidth);
+    const maxTop = Math.max(0, host.clientHeight - box.offsetHeight);
+    box.style.left = `${Math.min(Math.max(0, d.left + e.clientX - d.x), maxLeft)}px`;
+    box.style.top = `${Math.min(Math.max(0, d.top + e.clientY - d.y), maxTop)}px`;
+    box.style.right = 'auto';
+  };
+  const onUp = () => {
+    drag.current = null;
+  };
+  const changeSize = (e: React.MouseEvent<HTMLButtonElement>, s: ScopeSize) => {
+    // 大きさを変えたら、右上の元の位置に戻す
+    const box = e.currentTarget.closest<HTMLElement>('.scope');
+    if (box) {
+      box.style.left = '';
+      box.style.top = '';
+      box.style.right = '';
+    }
+    setSize(s);
+  };
+
+  const label = props.peep ? '照準器の視野' : '望遠鏡の視野';
   return (
-    <div className="scope" ref={props.ref} aria-label="望遠鏡の視野">
+    <div className={`scope scope-${size} ${props.peep ? 'is-peep' : ''}`} ref={props.ref} aria-label={label}>
+      <div className="scope-blur" ref={blur} />
       <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet" className="scope-cross">
+        <defs>
+          <filter id="scope-reticle-blur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur ref={reticleBlur} stdDeviation="0" />
+          </filter>
+        </defs>
         <path
           className="scope-mask"
           fillRule="evenodd"
           d="M-51,-51 H51 V51 H-51 Z M0,-48 A48,48 0 1,0 0,48 A48,48 0 1,0 0,-48 Z"
         />
         <circle r="48" className="scope-ring" />
-        <line x1="-48" y1="0" x2="48" y2="0" />
-        <line x1="0" y1="-48" x2="0" y2="48" />
-        <line x1="-8" y1="-3" x2="-8" y2="3" />
-        <line x1="8" y1="-3" x2="8" y2="3" />
-        <line x1="-3" y1="-8" x2="3" y2="-8" />
-        <line x1="-3" y1="8" x2="3" y2="8" />
+        {props.peep ? (
+          <path className="peep-mark" d="M0,-5 L4.5,3 L-4.5,3 Z" />
+        ) : (
+          <g ref={reticle}>
+            <line x1="-48" y1="0" x2="48" y2="0" />
+            <line x1="0" y1="-48" x2="0" y2="48" />
+            <line x1="-8" y1="-3" x2="-8" y2="3" />
+            <line x1="8" y1="-3" x2="8" y2="3" />
+            <line x1="-3" y1="-8" x2="3" y2="-8" />
+            <line x1="-3" y1="8" x2="3" y2="8" />
+          </g>
+        )}
       </svg>
-      <span className="scope-label">望遠鏡の視野</span>
+      <div
+        className="scope-bar"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        title="つかんで動かせます"
+      >
+        <span className="scope-label">{label}</span>
+        <span className="scope-sizes" role="group" aria-label="視野の大きさ">
+          {SCOPE_SIZES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={size === s.id ? 'is-on' : ''}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => changeSize(e, s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </span>
+      </div>
     </div>
   );
 }

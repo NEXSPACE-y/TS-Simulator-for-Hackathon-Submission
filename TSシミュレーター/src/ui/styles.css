@@ -438,6 +438,58 @@ input {
   pointer-events: none;
 }
 
+.scope-small {
+  width: min(30vh, 32%);
+}
+
+.scope-medium {
+  width: min(46vh, 46%);
+}
+
+.scope-large {
+  width: min(80vh, 72%);
+}
+
+/* ピントが合っていないときに、望遠鏡の像だけをぼかす層 */
+.scope-blur {
+  position: absolute;
+  inset: 0;
+}
+
+.scope-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+}
+
+.scope-sizes {
+  display: flex;
+  gap: 3px;
+}
+
+.scope-sizes button {
+  font-size: 11px;
+  padding: 1px 7px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.peep-mark {
+  fill: none;
+  stroke: #fff3c4;
+  stroke-width: 0.8;
+}
+
 .scope-mask {
   fill: #0b0d10;
 }
@@ -461,9 +513,6 @@ input {
 }
 
 .scope-label {
-  position: absolute;
-  bottom: 4px;
-  left: 6px;
   font-size: 11px;
   color: var(--muted);
 }
@@ -768,6 +817,12 @@ button.complete {
 
 .tablet-title {
   font-weight: 700;
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 
 .field {
@@ -1101,8 +1156,16 @@ button.big {
     font-size: 10px;
   }
 
-  .scope {
+  .scope-small {
+    width: min(30vh, 42%);
+  }
+
+  .scope-medium {
     width: min(42vh, 60%);
+  }
+
+  .scope-large {
+    width: min(56vh, 94%);
   }
 
   .mode-cards {

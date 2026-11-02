@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 const COMMAND_STRIDE: usize = 4;
 
 /// 操作のコード（TS側は `command_codes_json()` から読む）
-const COMMAND_CODES: [(&str, u32); 15] = [
+const COMMAND_CODES: [(&str, u32); 18] = [
     ("moveFreeLegs", 1),
     ("pressLeg", 2),
     ("changeLegLength", 3),
@@ -35,6 +35,9 @@ const COMMAND_CODES: [(&str, u32); 15] = [
     ("rotateTelescope", 13),
     ("setStation", 14),
     ("observe", 15),
+    ("turnFocus", 16),
+    ("turnEyepiece", 17),
+    ("setPeepSight", 18),
 ];
 
 fn index(v: f64) -> usize {
@@ -94,6 +97,15 @@ fn decode(code: f64, a: f64, b: f64, c: f64) -> Option<Command> {
             height_m: c,
         },
         15 => Command::Observe,
+        16 => Command::TurnFocus {
+            dir: a,
+            speed: speed(b),
+        },
+        17 => Command::TurnEyepiece {
+            dir: a,
+            speed: speed(b),
+        },
+        18 => Command::SetPeepSight { on: a > 0.0 },
         _ => return None,
     };
     Some(cmd)
@@ -238,6 +250,12 @@ fn visit(s: &Snapshot, f: &mut dyn FnMut(&'static str, &[f64])) {
             .unwrap_or([f64::NAN; 4]),
     );
     f("sightOk", &[b(s.sight.map(|v| v.ok).unwrap_or(false))]);
+    f("opticsValid", &[b(s.optics.is_some())]);
+    f("peepSight", &[b(s.optics.map(|o| o.peep_sight).unwrap_or(false))]);
+    f("targetBlur", &[s.optics.map(|o| o.target_blur).unwrap_or(0.0)]);
+    f("reticleBlur", &[s.optics.map(|o| o.reticle_blur).unwrap_or(0.0)]);
+    f("focusOk", &[b(s.optics.map(|o| o.focus_ok).unwrap_or(false))]);
+    f("reticleOk", &[b(s.optics.map(|o| o.reticle_ok).unwrap_or(false))]);
     f("bsTarget", &s.bs_target.to_array());
     f("fsTarget", &s.fs_target.to_array());
     f("uiRevision", &[s.ui_revision as f64]);
@@ -389,14 +407,15 @@ fn ui_json(u: &UiState) -> String {
         })
         .unwrap_or_else(|| "null".into());
     let observation = format!(
-        r#"{{"points":[{}],"design":{},"station":{},"backsight":{},"heightText":{},"bs":{},"fs":{}}}"#,
+        r#"{{"points":[{}],"design":{},"station":{},"backsight":{},"heightText":{},"bs":{},"fs":{},"peepSight":{}}}"#,
         points.join(","),
         point(&o.design),
         jopt_usize(o.station),
         jopt_usize(o.backsight),
         jopt_str(&o.height_text),
         bs,
-        fs
+        fs,
+        o.peep_sight
     );
     let mode = match u.mode {
         Mode::Textbook => "textbook",

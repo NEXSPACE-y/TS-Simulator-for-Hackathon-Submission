@@ -44,7 +44,13 @@ export function App(props: { bridge: Bridge }) {
     () =>
       new InputManager(bridge, () => {
         const ui = bridge.getUi();
-        return { phase: ui.phase, mode: ui.mode, step: ui.currentStep, clampTight: ui.clampTight };
+        return {
+          phase: ui.phase,
+          mode: ui.mode,
+          step: ui.currentStep,
+          clampTight: ui.clampTight,
+          peepSight: ui.observation.peepSight,
+        };
       }),
     [bridge],
   );

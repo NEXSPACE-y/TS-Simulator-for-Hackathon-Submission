@@ -4,7 +4,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
 import { dmsCircleAt, dmsSignedAt, fixed, flag } from '../bridge/format';
-import { DirPad, Section, SpeedSelector } from './controls';
+import { DirPad, HoldButton, Section, SpeedSelector } from './controls';
 import { setText, useFrame, useSim, useUi } from './hooks';
 
 export function ObservationPanel() {
@@ -100,6 +100,8 @@ function Telescope() {
   const dh = useRef<HTMLSpanElement>(null);
   const dv = useRef<HTMLSpanElement>(null);
   const ok = useRef<HTMLSpanElement>(null);
+  const reticle = useRef<HTMLSpanElement>(null);
+  const focus = useRef<HTMLSpanElement>(null);
   useFrame(
     useCallback((f: Frame) => {
       setText(ha.current, dmsCircleAt(f, f.o.hrDms));
@@ -109,12 +111,76 @@ function Telescope() {
       const good = flag(f, f.o.sightOk);
       setText(ok.current, good ? '視準OK' : '視準を合わせる');
       ok.current?.classList.toggle('is-ok', good);
+      const rOk = flag(f, f.o.reticleOk);
+      setText(reticle.current, rOk ? 'くっきり' : 'ぼやけている');
+      reticle.current?.classList.toggle('is-ok', rOk);
+      const fOk = flag(f, f.o.focusOk);
+      setText(focus.current, fOk ? '合っている' : '合っていない');
+      focus.current?.classList.toggle('is-ok', fOk);
     }, []),
   );
   const o = ui.observation;
   const target = ui.currentStep === 9 ? 'BS（ターゲット板）' : 'FS（プリズム）';
   return (
     <>
+      <Section title="のぞく">
+        <div className="seg" role="radiogroup" aria-label="のぞく">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={o.peepSight}
+            className={o.peepSight ? 'is-on' : ''}
+            onClick={() => bridge.send('setPeepSight', 1)}
+          >
+            照準器
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!o.peepSight}
+            className={o.peepSight ? '' : 'is-on'}
+            onClick={() => bridge.send('setPeepSight', 0)}
+          >
+            望遠鏡
+          </button>
+        </div>
+        <p className="note">
+          {o.peepSight
+            ? '照準器で目標を大まかに捉えたら、望遠鏡に切り替えます（Pキー）。照準器では測量できません。'
+            : '望遠鏡の視野は狭いので、目標が見つからないときは照準器で大まかに向けます（Pキー）。'}
+        </p>
+      </Section>
+      <Section title="接眼レンズ（十字線）">
+        <div className="readout">
+          <div>
+            十字線 <span className="sight" ref={reticle} />
+          </div>
+        </div>
+        <div className="pair-row">
+          <HoldButton intent={{ kind: 'eyepiece', dir: -1 }} title="Vキー">
+            左に回す
+          </HoldButton>
+          <HoldButton intent={{ kind: 'eyepiece', dir: 1 }} title="Bキー">
+            右に回す
+          </HoldButton>
+        </div>
+      </Section>
+      <Section title="合焦つまみ（ピント）">
+        <div className="readout">
+          <div>
+            ピント <span className="sight" ref={focus} />
+          </div>
+        </div>
+        <div className="pair-row">
+          <HoldButton intent={{ kind: 'focus', dir: 1 }} title="Fキー">
+            近くへ
+          </HoldButton>
+          <HoldButton intent={{ kind: 'focus', dir: -1 }} title="Gキー">
+            遠くへ
+          </HoldButton>
+        </div>
+        <p className="note">十字線は接眼レンズで、ターゲットのぼけは合焦つまみで直します。どちらかがぼけていると測量できません。</p>
+      </Section>
       <Section title={`望遠鏡：${target}を視準`}>
         <div className="readout">
           <div>

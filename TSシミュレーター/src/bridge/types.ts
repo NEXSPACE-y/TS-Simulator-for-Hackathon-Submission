@@ -15,7 +15,10 @@ export type CommandName =
   | 'startObservation'
   | 'rotateTelescope'
   | 'setStation'
-  | 'observe';
+  | 'observe'
+  | 'turnFocus'
+  | 'turnEyepiece'
+  | 'setPeepSight';
 
 export interface StepView {
   no: number;
@@ -85,6 +88,8 @@ export interface ObservationView {
   heightText: string | null;
   bs: BacksightView | null;
   fs: ForesightView | null;
+  /** 照準器でのぞいているか（false＝望遠鏡） */
+  peepSight: boolean;
 }
 
 export interface UiState {

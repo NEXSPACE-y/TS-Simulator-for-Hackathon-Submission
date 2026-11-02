@@ -10,13 +10,16 @@ export type HoldIntent =
   | { kind: 'legLength'; leg: number; extend: boolean }
   | { kind: 'screw'; screw: number; thumb: 1 | -1 }
   | { kind: 'slide'; dx: number; dy: number }
-  | { kind: 'telescope'; dh: number; dv: number };
+  | { kind: 'telescope'; dh: number; dv: number }
+  | { kind: 'focus'; dir: 1 | -1 }
+  | { kind: 'eyepiece'; dir: 1 | -1 };
 
 export interface InputContext {
   phase: 'setup' | 'setupResult' | 'observation';
   mode: 'textbook' | 'field';
   step: number;
   clampTight: boolean;
+  peepSight: boolean;
 }
 
 type Cmd = readonly [CommandName, number, number, number];
@@ -35,6 +38,14 @@ const KEY_HOLDS: Record<string, HoldIntent> = {
   KeyQ: { kind: 'legLength', leg: 0, extend: false },
   KeyW: { kind: 'legLength', leg: 1, extend: false },
   KeyE: { kind: 'legLength', leg: 2, extend: false },
+};
+
+/** 観測のときだけ使うキー → 押している間の操作（合焦つまみ・接眼レンズ） */
+const OBSERVATION_KEY_HOLDS: Record<string, HoldIntent> = {
+  KeyF: { kind: 'focus', dir: 1 },
+  KeyG: { kind: 'focus', dir: -1 },
+  KeyV: { kind: 'eyepiece', dir: -1 },
+  KeyB: { kind: 'eyepiece', dir: 1 },
 };
 
 const ARROWS: Record<string, [number, number]> = {
@@ -95,7 +106,7 @@ export class InputManager {
         this.holds.set(`key:${e.code}`, this.arrowIntent(ctx, arrow));
         return;
       }
-      const hold = KEY_HOLDS[e.code];
+      const hold = KEY_HOLDS[e.code] ?? (ctx.phase === 'observation' ? OBSERVATION_KEY_HOLDS[e.code] : undefined);
       if (hold) {
         e.preventDefault();
         this.holds.set(`key:${e.code}`, hold);
@@ -110,6 +121,8 @@ export class InputManager {
       if (e.repeat) return;
       if (e.code === 'KeyT' && ctx.phase === 'setup') {
         this.bridge.send('setClamp', ctx.clampTight ? 0 : 1);
+      } else if (e.code === 'KeyP' && ctx.phase === 'observation' && ctx.step >= 9) {
+        this.bridge.send('setPeepSight', ctx.peepSight ? 0 : 1);
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -166,6 +179,12 @@ export class InputManager {
           break;
         case 'screw':
           out.push(['turnScrew', h.screw, h.thumb, speed]);
+          break;
+        case 'focus':
+          out.push(['turnFocus', h.dir, speed, 0]);
+          break;
+        case 'eyepiece':
+          out.push(['turnEyepiece', h.dir, speed, 0]);
           break;
       }
     }
