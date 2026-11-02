@@ -1,0 +1,32 @@
+{
+  "name": "ts-simulator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:wasm": "wasm-pack build crates/wasm --target web --release --out-dir ../../src/bridge/pkg --out-name ts_sim",
+    "predev": "npm run build:wasm",
+    "dev": "vite",
+    "build": "npm run build:wasm && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "pretest": "npm run build:wasm",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

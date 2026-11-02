@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/wasm"]
+# デスクトップ版（Tauri）は別のCargoプロジェクトとして扱う（cargo test の対象に含めない）
+exclude = ["src-tauri"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[profile.release]
+# WASMを小さくするための設定（SPEC 9.2）
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
