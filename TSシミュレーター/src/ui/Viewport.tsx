@@ -177,9 +177,14 @@ function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement> }) {
   return (
     <div className="scope" ref={props.ref} aria-label="望遠鏡の視野">
       <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet" className="scope-cross">
-        <circle r="49" className="scope-ring" />
-        <line x1="-49" y1="0" x2="49" y2="0" />
-        <line x1="0" y1="-49" x2="0" y2="49" />
+        <path
+          className="scope-mask"
+          fillRule="evenodd"
+          d="M-51,-51 H51 V51 H-51 Z M0,-48 A48,48 0 1,0 0,48 A48,48 0 1,0 0,-48 Z"
+        />
+        <circle r="48" className="scope-ring" />
+        <line x1="-48" y1="0" x2="48" y2="0" />
+        <line x1="0" y1="-48" x2="0" y2="48" />
         <line x1="-8" y1="-3" x2="-8" y2="3" />
         <line x1="8" y1="-3" x2="8" y2="3" />
         <line x1="-3" y1="-8" x2="3" y2="-8" />

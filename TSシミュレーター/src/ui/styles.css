@@ -430,11 +430,13 @@ input {
   right: 10px;
   width: min(46vh, 46%);
   aspect-ratio: 1;
-  border-radius: 50%;
-  border: 3px solid #0b0d10;
-  box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0) inset;
+  border-radius: 6px;
   overflow: hidden;
   pointer-events: none;
+}
+
+.scope-mask {
+  fill: #0b0d10;
 }
 
 .scope-cross {
@@ -457,12 +459,10 @@ input {
 
 .scope-label {
   position: absolute;
-  bottom: 8%;
-  left: 0;
-  right: 0;
-  text-align: center;
+  bottom: 4px;
+  left: 6px;
   font-size: 11px;
-  color: #111;
+  color: var(--muted);
 }
 
 /* ---------------- 操作盤 ---------------- */
@@ -474,6 +474,10 @@ input {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.panel-head button {
+  white-space: nowrap;
 }
 
 .panel-head {

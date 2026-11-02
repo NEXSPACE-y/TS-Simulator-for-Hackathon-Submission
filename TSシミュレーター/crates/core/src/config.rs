@@ -120,7 +120,7 @@ pub const SPEED_SCREW: [f64; 3] = [0.5, 0.1, 0.02];
 /// 器械をずらす速さ [mm/s]
 pub const SPEED_SLIDE: [f64; 3] = [10.0, 2.0, 0.3];
 /// 望遠鏡を回す速さ [rad/s]（粗動・中・微動）
-pub const SPEED_TELESCOPE: [f64; 3] = [deg(12.0), deg(1.0), arcsec(30.0)];
+pub const SPEED_TELESCOPE: [f64; 3] = [deg(20.0), arcmin(5.0), arcsec(20.0)];
 /// 1フレームとして扱う時間の上限 [ms]（タブ切替などで時間が飛んだとき用）
 pub const MAX_FRAME_DT_MS: f64 = 100.0;
 

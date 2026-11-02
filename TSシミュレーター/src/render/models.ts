@@ -301,15 +301,16 @@ export class World {
     const poleMat = mat(0xffffff, { map: poleTexture() });
     const h = this.config.targetHeightMm / 1000;
     // BS：ターゲット板
+    // ポールは板の下端から地面まで（板の後ろ側に置き、視準の邪魔をしない）
     const bsPole = new THREE.Mesh(pole, poleMat);
-    bsPole.scale.y = h;
-    bsPole.position.y = -h / 2;
+    bsPole.scale.y = h - 0.1;
+    bsPole.position.set(0, -(h + 0.1) / 2, -0.02);
     const board = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), mat(0xffffff, { map: targetTexture(), side: THREE.DoubleSide }));
     this.bsTarget.add(bsPole, board);
     // FS：プリズム
     const fsPole = new THREE.Mesh(pole, poleMat);
-    fsPole.scale.y = h;
-    fsPole.position.y = -h / 2;
+    fsPole.scale.y = h - 0.07;
+    fsPole.position.set(0, -(h + 0.07) / 2, -0.03);
     const frame = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.14), mat(0xffffff, { map: prismFrameTexture(), side: THREE.DoubleSide }));
     frame.position.z = -0.012;
     const prism = new THREE.Mesh(
