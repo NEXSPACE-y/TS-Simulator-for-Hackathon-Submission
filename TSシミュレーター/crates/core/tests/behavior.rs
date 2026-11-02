@@ -217,14 +217,32 @@ fn leveling_moves_laser_point() {
 
 #[test]
 fn sliding_changes_centering_by_that_amount() {
+    // 求心ズレは、ずらした量だけ変わる。違いは、ずらしたことで器械がわずかに傾いた分
+    // （回転の中心の高さ × 傾きの変化）だけ
     let mut sim = level_sim();
     assert!(sim.turn_screw(C, Thumb::Left, 0.2).is_ok());
     let c0 = centering(&sim);
-    assert!(sim.set_clamp(false).is_ok());
+    let (Some(p0), true) = (snap(&sim).pose, sim.set_clamp(false).is_ok()) else {
+        unreachable!();
+    };
     assert!(sim.slide_instrument([3.0, -1.5]).is_ok());
     let c1 = centering(&sim);
-    assert!(approx(c1[0] - c0[0], 3.0, 1e-6));
-    assert!(approx(c1[1] - c0[1], -1.5, 1e-6));
+    let Some(p1) = snap(&sim).pose else {
+        unreachable!();
+    };
+    // 鉛直軸の倒れ（水平成分 ÷ 鉛直成分）の変化を、向きも含めて見る
+    let lean = |p: &InstrumentPose| {
+        let a = p.axis();
+        [a.x / a.z, a.y / a.z]
+    };
+    let (l0, l1) = (lean(&p0), lean(&p1));
+    let tilt_shift = p1.pivot.z * (l1[0] - l0[0]).hypot(l1[1] - l0[1]);
+    let extra = (c1[0] - c0[0] - 3.0).hypot(c1[1] - c0[1] + 1.5);
+    assert!(
+        approx(extra, tilt_shift, 1e-6),
+        "extra {extra} mm vs {tilt_shift} mm"
+    );
+    assert!(extra < 0.1, "ずらした量からの違いは0.1mm未満 extra {extra} mm");
 }
 
 #[test]
@@ -240,25 +258,32 @@ fn clamp_tight_prevents_sliding() {
 }
 
 #[test]
-fn sliding_on_level_head_keeps_tilt_but_tilted_head_breaks_bubble_slightly() {
-    // 水平な三脚頭：ずらしても傾きは変わらない
+fn sliding_breaks_bubble_slightly_and_more_on_tilted_head() {
+    // 水平な三脚頭：ずらすと傾きがわずかに変わる（オーナー確認：5mmで10″前後）
     let mut sim = level_sim();
     let t0 = tilt_xy(&sim);
     assert!(sim.set_clamp(false).is_ok());
-    assert!(sim.slide_instrument([4.0, 0.0]).is_ok());
+    assert!(sim.slide_instrument([5.0, 0.0]).is_ok());
     let t1 = tilt_xy(&sim);
-    assert!(approx(t0.0, t1.0, 1e-12) && approx(t0.1, t1.1, 1e-12));
+    let level_change = to_arcsec((t1.0 - t0.0).hypot(t1.1 - t0.1));
+    assert!(
+        (8.0..=12.0).contains(&level_change),
+        "水平な三脚頭で5mm：{level_change}″"
+    );
 
-    // 傾いた三脚頭：わずかに気泡が崩れる（数秒〜数十秒）
+    // 傾いた三脚頭：さらに崩れる（ただし数十秒まで）
     let mut sim = level_sim();
     let feet = sim.tripod.feet;
     assert!(sim.tripod.try_set(feet, [1400.0, 1380.0, 1380.0]).is_ok());
     let t0 = tilt_xy(&sim);
     assert!(sim.set_clamp(false).is_ok());
-    assert!(sim.slide_instrument([4.0, 0.0]).is_ok());
+    assert!(sim.slide_instrument([5.0, 0.0]).is_ok());
     let t1 = tilt_xy(&sim);
     let change = to_arcsec((t1.0 - t0.0).hypot(t1.1 - t0.1));
-    assert!(change > 1.0 && change < 120.0, "change {change}″");
+    assert!(
+        change > level_change && change < 120.0,
+        "傾いた三脚頭で5mm：{change}″（水平では{level_change}″）"
+    );
 }
 
 #[test]

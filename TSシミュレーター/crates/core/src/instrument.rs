@@ -10,7 +10,8 @@ use crate::angle::{round_arcsec, to_arcsec};
 use crate::config::{
     CIRCULAR_IN_CIRCLE_MM, CIRCULAR_SENS_ANGLE, CIRCULAR_SENS_MM, CIRCULAR_VIAL_MAX_MM,
     HEAD_TOP_OFFSET_MM, LCD_OUTER_RANGE_SEC, SCREW_AZIMUTHS, SCREW_PITCH_MM, SCREW_RADIUS_MM,
-    SCREW_TURN_LIMIT, SLIDE_LIMIT_MM, SLIDE_TILT_COUPLING_PER_MM, TILT_TOLERANCE_SEC,
+    SCREW_TURN_LIMIT, SLIDE_LIMIT_MM, SLIDE_TILT_COUPLING_PER_MM, SLIDE_TILT_PER_MM,
+    TILT_TOLERANCE_SEC,
     TRIBRACH_PIVOT_HEIGHT_MM, TRUNNION_HEIGHT_MM,
 };
 use crate::math::{Mat3, Vec3};
@@ -104,7 +105,7 @@ impl Instrument {
     }
 
     /// 器械を三脚頭上でずらす（三脚頭の座標の向き、mm）。
-    /// 定心桿を締めている間はずらせない。三脚頭が傾いていると、ずらした分だけ少し気泡が崩れる。
+    /// 定心桿を締めている間はずらせない。ずらした分だけ少し気泡が崩れる（三脚頭が傾いているほど大きい）。
     pub fn slide_by(&mut self, d: [f64; 2], head_tilt: f64) -> Result<(), InstrumentError> {
         if !self.mounted {
             return Err(InstrumentError::NotMounted);
@@ -122,7 +123,8 @@ impl Instrument {
             return Ok(());
         }
         self.slide = [nx, ny];
-        let k = SLIDE_TILT_COUPLING_PER_MM * head_tilt.abs();
+        // 三脚頭の上面のわずかな丸みで、ずらした向きへ少し倒れる。三脚頭が傾いていると、さらに崩れる
+        let k = SLIDE_TILT_PER_MM + SLIDE_TILT_COUPLING_PER_MM * head_tilt.abs();
         self.seat_tilt[0] += moved[0] * k;
         self.seat_tilt[1] += moved[1] * k;
         Ok(())

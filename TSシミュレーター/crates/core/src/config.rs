@@ -15,8 +15,8 @@ use crate::angle::{arcmin, arcsec, deg};
 pub const CENTERING_TOLERANCE_MM: f64 = 0.5;
 /// 電子気泡の許容 [秒]（X・Yそれぞれ。確定）
 pub const TILT_TOLERANCE_SEC: f64 = 15.0;
-/// 液晶◎の外側の円の範囲 [秒]（仮：±6′）
-pub const LCD_OUTER_RANGE_SEC: f64 = 360.0;
+/// 液晶◎の外側の円の範囲 [秒]（オーナー確認：±1′。±15″の中心の円が見える大きさにするため）
+pub const LCD_OUTER_RANGE_SEC: f64 = 60.0;
 /// 円形気泡の感度：この角度だけ傾くと…（仮：8′）
 pub const CIRCULAR_SENS_ANGLE: f64 = arcmin(8.0);
 /// …気泡がこの距離だけ動く [mm]（仮：2 mm）
@@ -103,7 +103,10 @@ pub const SCREW_TURN_LIMIT: f64 = 8.0;
 pub const SCREW_START_JITTER: f64 = 0.6;
 /// 整準ネジの先端の面から望遠鏡の回転軸（器械高の基準）までの高さ [mm]
 pub const TRUNNION_HEIGHT_MM: f64 = 200.0;
-/// 器械を三脚頭上でずらしたときの気泡の崩れ
+/// 器械を三脚頭上でずらしたときの気泡の崩れ（三脚頭の上面のわずかな丸みによる分）
+/// ずらした量 1 mm あたりの器械の傾きの変化 [rad]（オーナー確認：5 mm ずらすと 10″前後）
+pub const SLIDE_TILT_PER_MM: f64 = arcsec(2.0);
+/// 器械を三脚頭上でずらしたときの気泡の崩れ（三脚頭が傾いている分）
 /// （三脚頭の傾き[rad] × ずらした量[mm] × この係数 が、器械の傾きの変化[rad]になる）
 pub const SLIDE_TILT_COUPLING_PER_MM: f64 = 1.1e-3;
 /// 開始時の器械のずれ（三脚頭上）のばらつき [mm]
