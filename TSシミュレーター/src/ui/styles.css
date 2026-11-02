@@ -325,6 +325,9 @@ input {
   font-size: 11px;
   color: var(--muted);
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .zoom svg {
@@ -774,6 +777,14 @@ button.complete {
   align-items: center;
 }
 
+.field input {
+  min-width: 0;
+}
+
+.field button {
+  white-space: nowrap;
+}
+
 .points {
   width: 100%;
   border-collapse: collapse;
@@ -1048,8 +1059,8 @@ button.big {
   }
 
   .step-group-title {
-    writing-mode: vertical-rl;
     margin: 0;
+    white-space: nowrap;
   }
 
   .steps ol {
@@ -1084,6 +1095,10 @@ button.big {
 
   .zoom {
     width: 92px;
+  }
+
+  .zoom figcaption {
+    font-size: 10px;
   }
 
   .scope {
