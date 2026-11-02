@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 
 // Tauri（デスクトップ版）からも同じ設定で使う
 export default defineConfig({
+  // GitHub Pages（/リポジトリ名/ の下）でも Tauri でも動くよう、相対パスで出力する
+  base: './',
   plugins: [react()],
   clearScreen: false,
   server: {

@@ -3,6 +3,8 @@
 トータルステーション（TS）の**据付から観測（BS・FS）まで**を、ブラウザの3Dで練習できるシミュレーターです。
 Built with Claude: Japan 2026 の出展作品です。仕様は [SPEC.md](SPEC.md) にあります。
 
+**Web版：https://nexspace-y.github.io/TS-Simulator-for-Hackathon-Submission/**
+
 - 作品の核：求心と整準の「片方を直すと、もう片方がズレる」ループ（手順6⇄7）を、実機に近い感覚で再現すること
 - 計算のコアは Rust で書き、WebAssembly（WASM）にして Web版とデスクトップ版で同じものを使います
 
@@ -63,7 +65,8 @@ scripts/    Vercelでのビルド用スクリプト
 
 ### 配布
 
-- Web版：Vercel（プロジェクト設定の Root Directory を `TSシミュレーター` にする。ビルドは `vercel.json` と `scripts/` のとおり）
+- Web版：GitHub Pages（https://nexspace-y.github.io/TS-Simulator-for-Hackathon-Submission/ ）。`main` に push すると、`.github/workflows/pages.yml` でビルドして公開する。事前にリポジトリの Settings → Pages → Source を「GitHub Actions」にしておく
+  - `vercel.json` と `scripts/` の Vercel 用スクリプトは、今は使っていない
 - デスクトップ版：GitHub Actions（`.github/workflows/desktop.yml`）で Windows / macOS 向けにビルドし、GitHub Releases の下書きに置く
 
 ## 素材と表記
