@@ -57,7 +57,6 @@ src/
   main.tsx  起動処理
 tests/      Vitest（WASMとのつなぎ目の確認）
 src-tauri/  デスクトップ版（Tauri 2）
-scripts/    Vercelでのビルド用スクリプト
 ```
 
 - 物理・判定・座標計算はすべて `crates/core` にあります。許容値などの数値は `crates/core/src/config.rs` の1か所にまとめています。
@@ -66,7 +65,6 @@ scripts/    Vercelでのビルド用スクリプト
 ### 配布
 
 - Web版：GitHub Pages（https://nexspace-y.github.io/TS-Simulator-for-Hackathon-Submission/ ）。`main` に push すると、`.github/workflows/pages.yml` でビルドして公開する。事前にリポジトリの Settings → Pages → Source を「GitHub Actions」にしておく
-  - `vercel.json` と `scripts/` の Vercel 用スクリプトは、今は使っていない
 - デスクトップ版：GitHub Actions（`.github/workflows/desktop.yml`）で Windows / macOS 向けにビルドし、GitHub Releases の下書きに置く
 
 ## 素材と表記
