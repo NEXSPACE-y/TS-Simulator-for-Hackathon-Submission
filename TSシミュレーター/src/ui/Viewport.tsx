@@ -222,7 +222,12 @@ function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean
     const box = e.currentTarget.parentElement;
     const host = box?.parentElement;
     if (!box || !host) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // 指を捕まえられなくても（ブラウザに断られても）、動かす操作は続ける
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // 捕まえられないときは、帯の上で動かした分だけ動く
+    }
     const r = box.getBoundingClientRect();
     const h = host.getBoundingClientRect();
     drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: r.left - h.left, top: r.top - h.top };
@@ -287,6 +292,7 @@ function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
+        onLostPointerCapture={onUp}
         title="つかんで動かせます"
       >
         <span className="scope-label">{label}</span>

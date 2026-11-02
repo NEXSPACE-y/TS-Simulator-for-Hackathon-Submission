@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ModeId, type Bridge } from '../bridge';
 import type { Quality } from '../render/engine';
+import { DebugLog, isDebugMode } from './DebugLog';
 import { SimContext, useUi } from './hooks';
 import { InputManager } from './input';
 import { OperationPanel } from './OperationPanel';
@@ -65,6 +66,8 @@ export function App(props: { bridge: Bridge }) {
   };
 
   const ctx = useMemo(() => ({ bridge, input }), [bridge, input]);
+  // URL に ?debug を付けたときだけ、タッチの記録を画面の隅に出す
+  const debug = useMemo(isDebugMode, []);
 
   return (
     <SimContext.Provider value={ctx}>
@@ -87,6 +90,7 @@ export function App(props: { bridge: Bridge }) {
           }}
         />
       )}
+      {debug && <DebugLog />}
     </SimContext.Provider>
   );
 }

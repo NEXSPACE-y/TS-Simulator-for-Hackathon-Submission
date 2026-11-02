@@ -44,6 +44,18 @@ button {
   cursor: pointer;
   touch-action: none;
   user-select: none;
+  /* iPhone（Safari・Chrome とも）：長押しで文字の選択やメニューを出さない */
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 3Dの画面・拡大表示・望遠鏡の視野でも、長押しで選択やメニューを出さない */
+.viewport,
+.scope-bar {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button:hover:not(:disabled) {
@@ -1171,4 +1183,26 @@ button.big {
   .mode-cards {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------------- 診断モード（?debug のときだけ） ---------------- */
+
+.debug-log {
+  position: fixed;
+  left: 4px;
+  top: 4px;
+  z-index: 30;
+  max-width: min(92vw, 420px);
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #9fe8d0;
+  font: 10px/1.35 'Consolas', 'Menlo', monospace;
+  pointer-events: none;
+}
+
+.debug-log pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
 }

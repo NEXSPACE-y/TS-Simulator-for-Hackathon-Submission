@@ -70,6 +70,11 @@ export class InputManager {
     return this.speedLevel;
   }
 
+  /** いま押している操作の数（診断モードの表示用） */
+  get holdCount(): number {
+    return this.holds.size;
+  }
+
   setSpeed(s: SpeedLevel): void {
     this.speedLevel = s;
   }

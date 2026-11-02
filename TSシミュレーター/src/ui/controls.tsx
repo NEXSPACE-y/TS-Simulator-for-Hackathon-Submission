@@ -6,6 +6,108 @@ import { fixed } from '../bridge/format';
 import type { HoldIntent, SpeedLevel } from './input';
 import { setText, useFrame, useSim, useUi } from './hooks';
 
+/** 押している指・マウス（どの指で押したかを覚えておき、その指を離したときだけ止める） */
+interface HoldOwner {
+  pointerId: number | null;
+  touchId: number | null;
+  count: number;
+}
+
+/**
+ * 押している間だけ操作を送るボタンの仕組み（HoldButton・PairButton で共通）。
+ * - スマホ：押し始め（touchstart）で、ブラウザの長押しの動き（文字の選択・メニューなど）を止める
+ * - 指を捕まえる処理（ポインターキャプチャ）は使わない。iPhone でタッチが効かなくなる原因になりうるため
+ * - ボタンの外で離しても、タッチが取り消されても、画面を離れても、必ず止める
+ */
+function useHold(intents: HoldIntent[], disabled: boolean | undefined) {
+  const { input } = useSim();
+  const id = useId();
+  const ref = useRef<HTMLButtonElement>(null);
+  const [active, setActive] = useState(false);
+  const latest = useRef({ intents, disabled });
+  latest.current = { intents, disabled };
+  const owner = useRef<HoldOwner | null>(null);
+
+  const release = useCallback(() => {
+    const o = owner.current;
+    if (!o) return;
+    owner.current = null;
+    for (let i = 0; i < o.count; i++) input.release(`${id}:${i}`);
+    setActive(false);
+  }, [input, id]);
+
+  // タッチでは pointerdown と touchstart の両方が来る。どちらか先に来たほうで押し始める
+  const begin = useCallback(
+    (pointerId: number | null, touchId: number | null) => {
+      const o = owner.current;
+      if (o) {
+        if (o.pointerId === null) o.pointerId = pointerId;
+        if (o.touchId === null) o.touchId = touchId;
+        return;
+      }
+      const { intents: list, disabled: off } = latest.current;
+      if (off) return;
+      list.forEach((it, i) => input.press(`${id}:${i}`, it));
+      owner.current = { pointerId, touchId, count: list.length };
+      setActive(true);
+    },
+    [input, id],
+  );
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      begin(null, e.changedTouches[0]?.identifier ?? null);
+    };
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    return () => el.removeEventListener('touchstart', onTouchStart);
+  }, [begin]);
+
+  useEffect(() => {
+    const onPointerEnd = (e: PointerEvent) => {
+      if (owner.current?.pointerId === e.pointerId) release();
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const t = owner.current?.touchId;
+      if (t === null || t === undefined) return;
+      for (const ch of Array.from(e.changedTouches)) {
+        if (ch.identifier === t) {
+          release();
+          return;
+        }
+      }
+    };
+    const onHidden = () => {
+      if (document.visibilityState !== 'visible') release();
+    };
+    window.addEventListener('pointerup', onPointerEnd, true);
+    window.addEventListener('pointercancel', onPointerEnd, true);
+    window.addEventListener('touchend', onTouchEnd, true);
+    window.addEventListener('touchcancel', onTouchEnd, true);
+    window.addEventListener('blur', release);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('pointerup', onPointerEnd, true);
+      window.removeEventListener('pointercancel', onPointerEnd, true);
+      window.removeEventListener('touchend', onTouchEnd, true);
+      window.removeEventListener('touchcancel', onTouchEnd, true);
+      window.removeEventListener('blur', release);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, [release]);
+
+  // 押したまま消えたり使えなくなったりしたボタンが、操作を送り続けないようにする
+  useEffect(() => release, [release]);
+  useEffect(() => {
+    if (disabled) release();
+  }, [disabled, release]);
+
+  const onPointerDown = (e: React.PointerEvent) => begin(e.pointerId, null);
+  return { ref, active, onPointerDown };
+}
+
 /** 押している間だけ操作が続くボタン */
 export function HoldButton(props: {
   intent: HoldIntent;
@@ -14,34 +116,15 @@ export function HoldButton(props: {
   className?: string;
   title?: string;
 }) {
-  const { input } = useSim();
-  const id = useId();
-  const [active, setActive] = useState(false);
-  const start = (e: React.PointerEvent) => {
-    if (props.disabled) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    input.press(id, props.intent);
-    setActive(true);
-  };
-  const stop = () => {
-    input.release(id);
-    setActive(false);
-  };
-  // 押したまま消えたり使えなくなったりしたボタンが、操作を送り続けないようにする
-  useEffect(() => () => input.release(id), [input, id]);
-  useEffect(() => {
-    if (props.disabled) input.release(id);
-  }, [props.disabled, input, id]);
+  const hold = useHold([props.intent], props.disabled);
   return (
     <button
+      ref={hold.ref}
       type="button"
-      className={`hold ${props.className ?? ''} ${active ? 'is-active' : ''}`}
+      className={`hold ${props.className ?? ''} ${hold.active ? 'is-active' : ''}`}
       disabled={props.disabled}
       title={props.title}
-      onPointerDown={start}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-      onLostPointerCapture={stop}
+      onPointerDown={hold.onPointerDown}
       onContextMenu={(e) => e.preventDefault()}
     >
       {props.children}
@@ -51,42 +134,19 @@ export function HoldButton(props: {
 
 /** 2本を同時に回すボタン（左手親指の法則の練習用） */
 export function PairButton(props: { intents: HoldIntent[]; children: ReactNode; disabled?: boolean }) {
-  const { input } = useSim();
-  const id = useId();
-  const [active, setActive] = useState(false);
-  const start = (e: React.PointerEvent) => {
-    if (props.disabled) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    props.intents.forEach((it, i) => input.press(`${id}:${i}`, it));
-    setActive(true);
-  };
-  const stop = () => {
-    props.intents.forEach((_, i) => input.release(`${id}:${i}`));
-    setActive(false);
-  };
-  const count = props.intents.length;
-  useEffect(() => () => releasePair(input, id, count), [input, id, count]);
-  useEffect(() => {
-    if (props.disabled) releasePair(input, id, count);
-  }, [props.disabled, input, id, count]);
+  const hold = useHold(props.intents, props.disabled);
   return (
     <button
+      ref={hold.ref}
       type="button"
-      className={`hold pair ${active ? 'is-active' : ''}`}
+      className={`hold pair ${hold.active ? 'is-active' : ''}`}
       disabled={props.disabled}
-      onPointerDown={start}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-      onLostPointerCapture={stop}
+      onPointerDown={hold.onPointerDown}
       onContextMenu={(e) => e.preventDefault()}
     >
       {props.children}
     </button>
   );
-}
-
-function releasePair(input: { release(id: string): void }, id: string, count: number): void {
-  for (let i = 0; i < count; i++) input.release(`${id}:${i}`);
 }
 
 /** 速さ（粗・中・微） */
