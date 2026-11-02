@@ -77,6 +77,8 @@ pub const LEG_INCLINATION_MIN: f64 = deg(5.0);
 pub const LEG_INCLINATION_MAX: f64 = deg(45.0);
 /// 三脚頭の傾きとして許す上限。超える操作は受け付けない
 pub const HEAD_TILT_MAX: f64 = deg(15.0);
+/// 脚の付け根は足先より最低これだけ高いこと [mm]。下回る操作は受け付けない
+pub const LEG_MIN_RISE_MM: f64 = 100.0;
 /// 踏み込んだときに足先が沈む量の範囲 [mm]（毎回ランダム。仮：数mm）
 pub const SINK_MIN_MM: f64 = 2.0;
 pub const SINK_MAX_MM: f64 = 6.0;

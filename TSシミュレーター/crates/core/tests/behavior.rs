@@ -173,6 +173,34 @@ fn laser_offset_from_screw_tilt_matches_h_tan_theta() {
 }
 
 #[test]
+fn laser_offset_from_instrument_center_is_instrument_height_tan_theta() {
+    // SPEC 6.3 の式そのもの：器械が θ 傾くと、レーザー求心点は器械の中心（望遠鏡の回転軸）の
+    // 真下から 器械高×tanθ だけズレる。器械高は画面に出す値（測点から回転軸までの高さ）を使う
+    let mut sim = level_sim();
+    for (screw, thumb, turns) in [
+        (C, Thumb::Left, 1.0),
+        (A, Thumb::Right, 0.7),
+        (B, Thumb::Left, 1.3),
+    ] {
+        assert!(sim.turn_screw(screw, thumb, turns).is_ok());
+        let s = snap(&sim);
+        let (Some(pose), Some(laser), Some(ih), Some(center)) =
+            (s.pose, s.laser, s.instrument_height_mm, s.trunnion)
+        else {
+            unreachable!("器械は載っている");
+        };
+        let theta = pose.tilt();
+        assert!(theta > arcsec(60.0), "傾いていること θ={theta}");
+        let off = (laser.x - center.x).hypot(laser.y - center.y);
+        assert!(
+            approx(off, ih * theta.tan(), 1e-6),
+            "{off} vs {}",
+            ih * theta.tan()
+        );
+    }
+}
+
+#[test]
 fn leveling_moves_laser_point() {
     // 整準すると傾きが変わるので、レーザー求心点が動く
     let mut sim = level_sim();

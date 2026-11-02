@@ -11,6 +11,7 @@
 
 use crate::config::{
     HEAD_TILT_MAX, LEG_AZIMUTHS, LEG_HINGE_RADIUS_MM, LEG_INCLINATION_MAX, LEG_INCLINATION_MIN,
+    LEG_MIN_RISE_MM,
 };
 use crate::math::{solve_linear, Mat3, Vec3};
 
@@ -220,7 +221,7 @@ fn check_shape(feet: &[Vec3; 3], head: &HeadPose) -> Result<(), TripodError> {
     for (i, foot) in feet.iter().enumerate() {
         let p = head.to_world(hinge_local(i));
         let d = p - *foot;
-        if d.z <= 100.0 {
+        if d.z <= LEG_MIN_RISE_MM {
             return Err(TripodError::BadShape);
         }
         let incl = (d.x.hypot(d.y)).atan2(d.z);
