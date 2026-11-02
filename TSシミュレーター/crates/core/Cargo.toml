@@ -1,0 +1,16 @@
+[package]
+name = "ts-sim-core"
+description = "TS実習シミュレーターの計算コア（状態・物理・判定・観測・タイマー）"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ts_core"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
