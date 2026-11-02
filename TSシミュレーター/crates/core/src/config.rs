@@ -126,6 +126,10 @@ pub const SPEED_SCREW: [f64; 3] = [0.5, 0.1, 0.02];
 pub const SPEED_SLIDE: [f64; 3] = [10.0, 2.0, 0.3];
 /// 望遠鏡を回す速さ [rad/s]（粗動・中・微動）
 pub const SPEED_TELESCOPE: [f64; 3] = [deg(20.0), arcmin(5.0), arcsec(20.0)];
+/// 合焦つまみを回す速さ [1/m/s]（ピントの合う距離の逆数が変わる速さ。仮）
+pub const SPEED_FOCUS: [f64; 3] = [0.15, 0.02, 0.003];
+/// 接眼レンズを回す速さ [ディオプター/s]（仮）
+pub const SPEED_EYEPIECE: [f64; 3] = [2.0, 0.5, 0.1];
 /// 1フレームとして扱う時間の上限 [ms]（タブ切替などで時間が飛んだとき用）
 pub const MAX_FRAME_DT_MS: f64 = 100.0;
 
@@ -205,3 +209,30 @@ pub const TELESCOPE_START_ZENITH: f64 = deg(90.0);
 /// 望遠鏡の天頂角として動かせる範囲
 pub const TELESCOPE_ZENITH_MIN: f64 = deg(30.0);
 pub const TELESCOPE_ZENITH_MAX: f64 = deg(150.0);
+
+// ---------------------------------------------------------------------------
+// 望遠鏡の調整：合焦（ピント）・視度（十字線）（オーナー確認：2026-11-03 に追加。値はすべて仮）
+// ---------------------------------------------------------------------------
+
+/// ピントを合わせられる一番近い距離 [m]（遠い側は無限遠）
+pub const FOCUS_MIN_DISTANCE_M: f64 = 1.3;
+/// ピントが合ったとみなす範囲：「ピントの合う距離の逆数」と「ターゲットまでの距離の逆数」の差 [1/m]
+/// （22 m なら約 21〜24 m、41 m なら約 37〜47 m）
+pub const FOCUS_TOLERANCE_PER_M: f64 = 0.003;
+/// ターゲットのぼけが最大に見える差 [1/m]（表示用。ぼけの見え方は差の平方根に比例させ、
+/// 少しのずれでもわずかにぼけて見えるようにする）
+pub const FOCUS_BLUR_FULL_PER_M: f64 = 0.3;
+/// 観測を始めたときにピントの合っている距離の範囲 [m]（前に使った人の設定のまま、という想定）
+pub const FOCUS_START_MIN_M: f64 = 4.0;
+pub const FOCUS_START_MAX_M: f64 = 16.0;
+/// 接眼レンズを回せる範囲 [ディオプター]（±）
+pub const EYEPIECE_RANGE_DPT: f64 = 5.0;
+/// のぞく人の目に合う接眼レンズの位置の範囲 [ディオプター]（±。毎回ランダム）
+pub const EYE_RANGE_DPT: f64 = 2.0;
+/// 十字線がくっきり見えるとみなす範囲 [ディオプター]
+pub const EYEPIECE_TOLERANCE_DPT: f64 = 0.25;
+/// 十字線のぼけが最大に見えるずれ [ディオプター]（表示用。ぼけの見え方はずれの平方根に比例させる）
+pub const EYEPIECE_BLUR_FULL_DPT: f64 = 4.0;
+/// 観測を始めたときに、接眼レンズが目に合う位置からずれている量の範囲 [ディオプター]
+pub const EYEPIECE_START_OFF_MIN_DPT: f64 = 1.5;
+pub const EYEPIECE_START_OFF_MAX_DPT: f64 = 3.0;

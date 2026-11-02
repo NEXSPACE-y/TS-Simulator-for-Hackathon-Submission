@@ -7,7 +7,7 @@ use ts_core::config::{
 };
 use ts_core::instrument::{Instrument, InstrumentPose};
 use ts_core::math::{Mat3, Vec3};
-use ts_core::sim::{judge_setup, Command, NoticeKind, Refusal, Snapshot};
+use ts_core::sim::{judge_setup, Command, NoticeKind, OpticsView, Refusal, Snapshot};
 use ts_core::survey::{direction_to, foresight_ground_world};
 use ts_core::tripod::Tripod;
 use ts_core::{Mode, Phase, Simulator, Speed, Thumb};
@@ -643,6 +643,24 @@ fn aim(sim: &mut Simulator, target: Vec3) {
     sim.set_telescope(az, z);
 }
 
+/// 接眼レンズで十字線を、合焦つまみでターゲットを、くっきりさせる（ふつうの操作で回す）
+fn adjust_optics(sim: &mut Simulator, target: Vec3) {
+    let Some(eye) = sim.snapshot().trunnion else {
+        unreachable!();
+    };
+    let d_eyepiece = sim.obs.eye_dpt - sim.obs.eyepiece_dpt;
+    assert!(sim.turn_eyepiece(d_eyepiece).is_ok());
+    let d_focus = 1000.0 / (target - eye).norm() - sim.obs.focus_per_m;
+    assert!(sim.turn_focus(d_focus).is_ok());
+}
+
+fn optics(sim: &Simulator) -> OpticsView {
+    let Some(o) = sim.snapshot().optics else {
+        unreachable!("手順9・10ではピントと十字線の見え方がある");
+    };
+    o
+}
+
 fn observation_ready(sim: &mut Simulator) {
     let passed = sim.complete_setup().map(|j| j.passed).unwrap_or(false);
     assert!(passed);
@@ -658,6 +676,7 @@ fn bs_fs_observation_gives_known_coordinates() {
     assert!(sim.set_station(0, 1, ih).is_ok());
     let bs = sim.snapshot().bs_target;
     aim(&mut sim, bs);
+    adjust_optics(&mut sim, bs);
     assert!(sim.observe().is_ok());
     // BSを観測したら、水平角の読み＝方向角になる
     let Some(rec) = sim.obs.bs else {
@@ -668,6 +687,7 @@ fn bs_fs_observation_gives_known_coordinates() {
 
     let fs = sim.snapshot().fs_target;
     aim(&mut sim, fs);
+    adjust_optics(&mut sim, fs);
     assert!(sim.observe().is_ok());
     let Some(f) = sim.obs.fs else {
         unreachable!();
@@ -711,9 +731,11 @@ fn observation_reflects_centering_error() {
     good.inst.slide = [3.0, 0.0];
     let bs = good.snapshot().bs_target;
     aim(&mut good, bs);
+    adjust_optics(&mut good, bs);
     assert!(good.observe().is_ok());
     let fs = good.snapshot().fs_target;
     aim(&mut good, fs);
+    adjust_optics(&mut good, fs);
     assert!(good.observe().is_ok());
     let Some(f) = good.obs.fs else {
         unreachable!();
@@ -730,12 +752,136 @@ fn observe_refused_when_sight_is_off() {
     assert!(sim.set_station(0, 1, ih).is_ok());
     let bs = sim.snapshot().bs_target;
     aim(&mut sim, bs);
+    adjust_optics(&mut sim, bs);
     // 1′ずらす
     let hz = sim.obs.hz + arcsec(60.0);
     let z = sim.obs.zenith;
     sim.set_telescope(hz, z);
     assert!(matches!(sim.observe(), Err(Refusal::SightOff { .. })));
     assert!(sim.obs.bs.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// 望遠鏡の調整：照準器・視度・合焦（オーナー確認：2026-11-03 に追加）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn observation_starts_with_reticle_and_focus_out() {
+    // 前に使った人の設定のまま：十字線もピントも合っていない（毎回ちがう開始状態でも）
+    for seed in 1..=20 {
+        let mut sim = Simulator::new(Mode::Field, seed);
+        let level = level_sim();
+        sim.tripod = level.tripod.clone();
+        sim.inst = level.inst.clone();
+        observation_ready(&mut sim);
+        let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+        // セットすると手順9（BSの視準）へ進む
+        assert!(sim.set_station(0, 1, ih).is_ok());
+        let o = optics(&sim);
+        assert!(!o.reticle_ok && !o.focus_ok, "seed {seed}: {o:?}");
+        assert!(o.reticle_blur > 0.0 && o.target_blur > 0.0);
+        assert!(!o.peep_sight);
+    }
+}
+
+#[test]
+fn observe_needs_sharp_reticle_and_focus() {
+    let mut sim = level_sim();
+    observation_ready(&mut sim);
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    let bs = sim.snapshot().bs_target;
+    aim(&mut sim, bs);
+    // 十字線がぼやけていると測量できない
+    assert_eq!(sim.observe(), Err(Refusal::ReticleBlurry));
+    let d = sim.obs.eye_dpt - sim.obs.eyepiece_dpt;
+    assert!(sim.turn_eyepiece(d).is_ok());
+    assert!(optics(&sim).reticle_ok);
+    // ピントが合っていないと測量できない
+    assert_eq!(sim.observe(), Err(Refusal::OutOfFocus));
+    adjust_optics(&mut sim, bs);
+    assert!(sim.observe().is_ok());
+    assert!(sim.obs.bs.is_some());
+}
+
+#[test]
+fn turning_focus_toward_target_sharpens_it() {
+    let mut sim = level_sim();
+    observation_ready(&mut sim);
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    let bs = sim.snapshot().bs_target;
+    aim(&mut sim, bs);
+    let Some(eye) = sim.snapshot().trunnion else {
+        unreachable!();
+    };
+    let want = 1000.0 / (bs - eye).norm();
+    let dir = (want - sim.obs.focus_per_m).signum();
+    // ピントの合う向きへ少しずつ回すと、ぼけは減っていき、やがて合う
+    let mut last = optics(&sim).target_blur;
+    let mut ok = false;
+    for _ in 0..2000 {
+        assert!(sim.turn_focus(dir * 0.0005).is_ok());
+        let o = optics(&sim);
+        if o.focus_ok {
+            ok = true;
+            break;
+        }
+        assert!(o.target_blur <= last + 1e-12, "{} > {last}", o.target_blur);
+        last = o.target_blur;
+    }
+    assert!(ok, "ピントが合うところがある");
+    // 回しすぎると、またぼける
+    assert!(sim.turn_focus(dir * 0.02).is_ok());
+    assert!(!optics(&sim).focus_ok);
+}
+
+#[test]
+fn focus_must_be_redone_for_fs_but_reticle_stays() {
+    // BS（約41m）でピントを合わせても、FS（約22m）では合わせ直しが要る。十字線はそのまま
+    let mut sim = level_sim();
+    observation_ready(&mut sim);
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    let bs = sim.snapshot().bs_target;
+    aim(&mut sim, bs);
+    adjust_optics(&mut sim, bs);
+    assert!(sim.observe().is_ok());
+    let fs = sim.snapshot().fs_target;
+    aim(&mut sim, fs);
+    let o = optics(&sim);
+    assert!(o.reticle_ok, "十字線は合わせ直さなくてよい");
+    assert!(!o.focus_ok, "FSではピントを合わせ直す");
+    assert_eq!(sim.observe(), Err(Refusal::OutOfFocus));
+    adjust_optics(&mut sim, fs);
+    assert!(sim.observe().is_ok());
+}
+
+#[test]
+fn peep_sight_is_for_rough_aiming_only() {
+    let mut sim = level_sim();
+    observation_ready(&mut sim);
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    let bs = sim.snapshot().bs_target;
+    aim(&mut sim, bs);
+    adjust_optics(&mut sim, bs);
+    let r0 = sim.ui_revision();
+    sim.frame(0.0, &[Command::SetPeepSight { on: true }]);
+    assert!(optics(&sim).peep_sight);
+    assert!(sim.ui_revision() > r0, "のぞき方の切り替えは画面の状態に出る");
+    // 照準器のままでは測量できない
+    assert_eq!(sim.observe(), Err(Refusal::PeepSight));
+    assert!(sim.set_peep_sight(false).is_ok());
+    assert!(sim.observe().is_ok());
+}
+
+#[test]
+fn optics_are_turned_only_during_observation() {
+    let mut sim = level_sim();
+    assert_eq!(sim.turn_focus(0.01), Err(Refusal::NotInObservation));
+    assert_eq!(sim.turn_eyepiece(0.5), Err(Refusal::NotInObservation));
+    assert_eq!(sim.set_peep_sight(true), Err(Refusal::NotInObservation));
 }
 
 #[test]

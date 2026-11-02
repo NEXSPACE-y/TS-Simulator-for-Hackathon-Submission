@@ -101,6 +101,12 @@ pub enum Command {
     StartObservation,
     /// 望遠鏡を回す。dir[0]：＋＝右回り、dir[1]：＋＝上へ
     RotateTelescope { dir: [f64; 2], speed: Speed },
+    /// 合焦つまみを回す。dir：＋＝近くにピントが合う向き
+    TurnFocus { dir: f64, speed: Speed },
+    /// 接眼レンズを回す。dir：＋＝＋側（ディオプター）
+    TurnEyepiece { dir: f64, speed: Speed },
+    /// 照準器でのぞく（true）／望遠鏡でのぞく（false）
+    SetPeepSight { on: bool },
     /// 電子平板で機械点・BS点・器械高をセット（器械高は入力どおりの m）
     SetStation {
         station: usize,
@@ -149,6 +155,9 @@ pub enum Refusal {
     BacksightNotObserved,
     UseTabletForStep8,
     SightOff { dh_sec: f64, dv_sec: f64 },
+    PeepSight,
+    ReticleBlurry,
+    OutOfFocus,
 }
 
 impl Refusal {
@@ -184,6 +193,13 @@ impl Refusal {
                 format_dms_signed(arcsec(*dv_sec)),
                 SIGHT_OK_SEC
             ),
+            Refusal::PeepSight => "照準器では測量できません。望遠鏡に切り替えてのぞいてください。".into(),
+            Refusal::ReticleBlurry => {
+                "十字線がぼやけています。接眼レンズを回して、十字線をくっきりさせてください。".into()
+            }
+            Refusal::OutOfFocus => {
+                "ピントが合っていません。合焦つまみを回して、ターゲットをくっきりさせてください。".into()
+            }
         }
     }
 }
@@ -379,6 +395,27 @@ pub struct Observation {
     pub instrument_height_mm: Option<f64>,
     pub bs: Option<BacksightRecord>,
     pub fs: Option<ForesightRecord>,
+    /// 照準器でのぞいているか（false＝望遠鏡）
+    pub peep_sight: bool,
+    /// 合焦つまみの位置：ピントの合う距離の逆数 [1/m]（0＝無限遠）
+    pub focus_per_m: f64,
+    /// 接眼レンズの位置 [ディオプター]
+    pub eyepiece_dpt: f64,
+    /// のぞく人の目に合う接眼レンズの位置 [ディオプター]
+    pub eye_dpt: f64,
+}
+
+/// 望遠鏡のピントと十字線の見え方（毎フレーム。手順9・10）
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OpticsView {
+    /// 照準器でのぞいているか
+    pub peep_sight: bool,
+    /// 望遠鏡で見たターゲットのぼけ（0＝くっきり〜1＝最大）
+    pub target_blur: f64,
+    /// 望遠鏡で見た十字線のぼけ（0〜1）
+    pub reticle_blur: f64,
+    pub focus_ok: bool,
+    pub reticle_ok: bool,
 }
 
 /// 視準のズレ（毎フレーム）
@@ -432,6 +469,7 @@ pub struct Snapshot {
     /// 水平角の読み（rad）
     pub hr_reading: f64,
     pub sight: Option<SightView>,
+    pub optics: Option<OpticsView>,
     pub bs_target: Vec3,
     pub fs_target: Vec3,
     pub ui_revision: u64,
@@ -506,6 +544,8 @@ pub struct ObservationView {
     pub height_text: Option<String>,
     pub bs: Option<BacksightView>,
     pub fs: Option<ForesightView>,
+    /// 照準器でのぞいているか（false＝望遠鏡）
+    pub peep_sight: bool,
 }
 
 /// 変化の少ない画面の状態（手順・注意・結果など）
@@ -607,6 +647,10 @@ impl Simulator {
                 instrument_height_mm: None,
                 bs: None,
                 fs: None,
+                peep_sight: false,
+                focus_per_m: 0.0,
+                eyepiece_dpt: 0.0,
+                eye_dpt: 0.0,
             },
             obs_rev: 0,
             ui_revision: 1,
@@ -677,6 +721,8 @@ impl Simulator {
                 | Command::TurnScrew { .. }
                 | Command::SlideInstrument { .. }
                 | Command::RotateTelescope { .. }
+                | Command::TurnFocus { .. }
+                | Command::TurnEyepiece { .. }
         );
         if held && dt <= 0.0 {
             return;
@@ -713,6 +759,13 @@ impl Simulator {
                 let s = SPEED_TELESCOPE[speed.index()] * dt;
                 self.rotate_telescope(dir[0].clamp(-1.0, 1.0) * s, dir[1].clamp(-1.0, 1.0) * s)
             }
+            Command::TurnFocus { dir, speed } => {
+                self.turn_focus(dir.clamp(-1.0, 1.0) * SPEED_FOCUS[speed.index()] * dt)
+            }
+            Command::TurnEyepiece { dir, speed } => {
+                self.turn_eyepiece(dir.clamp(-1.0, 1.0) * SPEED_EYEPIECE[speed.index()] * dt)
+            }
+            Command::SetPeepSight { on } => self.set_peep_sight(on),
             Command::SetStation {
                 station,
                 backsight,
@@ -994,6 +1047,20 @@ impl Simulator {
         self.selected_step = 8;
         self.obs.hz = 0.0;
         self.obs.zenith = TELESCOPE_START_ZENITH;
+        // 合焦と接眼レンズは、前に使った人の設定のまま（どちらも合っていない）
+        self.obs.peep_sight = false;
+        self.obs.focus_per_m = 1.0 / self.rng.range(FOCUS_START_MIN_M, FOCUS_START_MAX_M);
+        self.obs.eye_dpt = self.rng.range(-EYE_RANGE_DPT, EYE_RANGE_DPT);
+        let off = self
+            .rng
+            .range(EYEPIECE_START_OFF_MIN_DPT, EYEPIECE_START_OFF_MAX_DPT);
+        // 範囲の外に出る向きなら、反対側へずらす
+        let up = self.obs.eye_dpt + off;
+        self.obs.eyepiece_dpt = if up <= EYEPIECE_RANGE_DPT && self.rng.range(0.0, 1.0) < 0.5 {
+            up
+        } else {
+            self.obs.eye_dpt - off
+        };
         self.obs_rev += 1;
         Ok(())
     }
@@ -1015,6 +1082,32 @@ impl Simulator {
         self.ensure_observation()?;
         self.obs.hz = (self.obs.hz + dh).rem_euclid(2.0 * PI);
         self.obs.zenith = (self.obs.zenith - dv).clamp(TELESCOPE_ZENITH_MIN, TELESCOPE_ZENITH_MAX);
+        Ok(())
+    }
+
+    /// 合焦つまみを回す（ピントの合う距離の逆数を d [1/m] だけ変える。＋＝近くへ）
+    pub fn turn_focus(&mut self, d: f64) -> Result<(), Refusal> {
+        self.ensure_observation()?;
+        let max = 1.0 / FOCUS_MIN_DISTANCE_M;
+        self.obs.focus_per_m = (self.obs.focus_per_m + d).clamp(0.0, max);
+        Ok(())
+    }
+
+    /// 接眼レンズを回す（d [ディオプター]）
+    pub fn turn_eyepiece(&mut self, d: f64) -> Result<(), Refusal> {
+        self.ensure_observation()?;
+        self.obs.eyepiece_dpt =
+            (self.obs.eyepiece_dpt + d).clamp(-EYEPIECE_RANGE_DPT, EYEPIECE_RANGE_DPT);
+        Ok(())
+    }
+
+    /// 照準器でのぞく（true）／望遠鏡でのぞく（false）
+    pub fn set_peep_sight(&mut self, on: bool) -> Result<(), Refusal> {
+        self.ensure_observation()?;
+        if self.obs.peep_sight != on {
+            self.obs.peep_sight = on;
+            self.obs_rev += 1;
+        }
         Ok(())
     }
 
@@ -1073,6 +1166,7 @@ impl Simulator {
                 let (Some(st), Some(bs)) = (self.obs.station, self.obs.backsight) else {
                     return Err(Refusal::StationNotSet);
                 };
+                check_optics(&snap)?;
                 check_sight(&snap)?;
                 let (_, _, slope) = direction_to(trunnion, backsight_target_world());
                 let reading = snap.hr_reading;
@@ -1105,6 +1199,7 @@ impl Simulator {
                 if self.obs.bs.is_none() {
                     return Err(Refusal::BacksightNotObserved);
                 }
+                check_optics(&snap)?;
                 check_sight(&snap)?;
                 let (_, _, slope) = direction_to(trunnion, foresight_target_world());
                 let rec = foresight_record(
@@ -1168,6 +1263,18 @@ impl Simulator {
             }
             _ => None,
         };
+        // ピントは、いま視準しようとしているターゲットまでの距離で決まる
+        let optics = match (self.phase, self.selected_step, trunnion) {
+            (Phase::Observation, 9, Some(eye)) => Some(optics_view(
+                &self.obs,
+                (backsight_target_world() - eye).norm() / 1000.0,
+            )),
+            (Phase::Observation, 10, Some(eye)) => Some(optics_view(
+                &self.obs,
+                (foresight_target_world() - eye).norm() / 1000.0,
+            )),
+            _ => None,
+        };
         let head_center = t.head.center;
         Snapshot {
             feet: t.feet,
@@ -1202,6 +1309,7 @@ impl Simulator {
             trunnion,
             hr_reading,
             sight,
+            optics,
             bs_target: backsight_target_world(),
             fs_target: foresight_target_world(),
             ui_revision: self.ui_revision,
@@ -1352,6 +1460,7 @@ impl Simulator {
             station: self.obs.station,
             backsight: self.obs.backsight,
             height_text: self.obs.instrument_height_mm.map(format_m),
+            peep_sight: self.obs.peep_sight,
             bs: self.obs.bs.map(|b| BacksightView {
                 azimuth_text: format_dms_circle(b.azimuth),
                 horizontal_text: format_m(b.horizontal_mm),
@@ -1431,6 +1540,32 @@ fn sight_view(target: u8, obs: &Observation, eye: Vec3, goal: Vec3) -> SightView
         dh_sec,
         dv_sec,
         ok: dh_sec.abs() <= SIGHT_OK_SEC && dv_sec.abs() <= SIGHT_OK_SEC,
+    }
+}
+
+/// ピントと十字線の見え方。`distance_m`＝器械からターゲットまでの距離 [m]
+fn optics_view(obs: &Observation, distance_m: f64) -> OpticsView {
+    let target_per_m = if distance_m > 0.0 { 1.0 / distance_m } else { 0.0 };
+    let defocus = (obs.focus_per_m - target_per_m).abs();
+    let reticle_off = (obs.eyepiece_dpt - obs.eye_dpt).abs();
+    OpticsView {
+        peep_sight: obs.peep_sight,
+        // 見え方は平方根に比例：合う手前でも、わずかなぼけが見える
+        target_blur: (defocus / FOCUS_BLUR_FULL_PER_M).min(1.0).sqrt(),
+        reticle_blur: (reticle_off / EYEPIECE_BLUR_FULL_DPT).min(1.0).sqrt(),
+        focus_ok: defocus <= FOCUS_TOLERANCE_PER_M,
+        reticle_ok: reticle_off <= EYEPIECE_TOLERANCE_DPT,
+    }
+}
+
+/// 望遠鏡でのぞいていて、十字線もターゲットもくっきり見えていること
+fn check_optics(snap: &Snapshot) -> Result<(), Refusal> {
+    match snap.optics {
+        Some(o) if o.peep_sight => Err(Refusal::PeepSight),
+        Some(o) if !o.reticle_ok => Err(Refusal::ReticleBlurry),
+        Some(o) if !o.focus_ok => Err(Refusal::OutOfFocus),
+        Some(_) => Ok(()),
+        None => Err(Refusal::BadIndex),
     }
 }
 
