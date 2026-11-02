@@ -1,0 +1,48 @@
+# テストとWeb版のビルド（cargo test / npm test / npm run build）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: TSシミュレーター
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust（rust-toolchain.toml の版）
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: TSシミュレーター
+
+      - name: wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: TSシミュレーター/package-lock.json
+
+      - name: cargo test
+        run: cargo test
+
+      - name: npm ci
+        run: npm ci
+
+      - name: npm test（WASMのつなぎ目）
+        run: npm test
+
+      - name: npm run build（Web版）
+        run: npm run build

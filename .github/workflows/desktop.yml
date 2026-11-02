@@ -1,0 +1,57 @@
+# デスクトップ版（Tauri）を Windows / macOS 向けにビルドし、GitHub Releases の下書きに置く
+# 「v」で始まるタグを push したとき、または手動で実行したときに動く
+name: Desktop
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: TSシミュレーター
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust（rust-toolchain.toml の版）
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            TSシミュレーター
+            TSシミュレーター/src-tauri
+
+      - name: wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: TSシミュレーター/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: TSシミュレーター
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-{0}', github.run_number) }}
+          releaseName: 'TS実習シミュレーター ${{ github.ref_type == ''tag'' && github.ref_name || github.run_number }}'
+          releaseDraft: true
+          prerelease: false
