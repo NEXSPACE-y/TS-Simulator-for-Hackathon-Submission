@@ -3,7 +3,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
-import { dmsCircleAt, fixed, flag } from '../bridge/format';
+import { dmsCircleAt, dmsSignedAt, fixed, flag } from '../bridge/format';
 import { DirPad, Section, SpeedSelector } from './controls';
 import { setText, useFrame, useSim, useUi } from './hooks';
 
@@ -104,8 +104,8 @@ function Telescope() {
     useCallback((f: Frame) => {
       setText(ha.current, dmsCircleAt(f, f.o.hrDms));
       setText(va.current, dmsCircleAt(f, f.o.vrDms));
-      setText(dh.current, `${fixed(f.data[f.o.sightDhSec], 0)}″`);
-      setText(dv.current, `${fixed(f.data[f.o.sightDvSec], 0)}″`);
+      setText(dh.current, dmsSignedAt(f, f.o.sightDhDms));
+      setText(dv.current, dmsSignedAt(f, f.o.sightDvDms));
       const good = flag(f, f.o.sightOk);
       setText(ok.current, good ? '視準OK' : '視準を合わせる');
       ok.current?.classList.toggle('is-ok', good);

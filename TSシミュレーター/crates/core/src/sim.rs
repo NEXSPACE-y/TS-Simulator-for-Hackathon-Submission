@@ -5,7 +5,7 @@
 
 use core::f64::consts::PI;
 
-use crate::angle::{format_dms_circle, format_dms_signed, round_arcsec, to_arcsec};
+use crate::angle::{arcsec, format_dms_circle, format_dms_signed, round_arcsec, to_arcsec};
 use crate::config::*;
 use crate::instrument::{
     tilt_within_tolerance, CircularBubble, ElectronicBubble, Instrument, InstrumentError,
@@ -179,8 +179,10 @@ impl Refusal {
             Refusal::BacksightNotObserved => "先にBSを観測してください。".into(),
             Refusal::UseTabletForStep8 => "手順8は電子平板の「セット」で行います。".into(),
             Refusal::SightOff { dh_sec, dv_sec } => format!(
-                "視準がずれています（水平 {:.0}″・鉛直 {:.0}″。{:.0}″以内に合わせてください）。",
-                dh_sec, dv_sec, SIGHT_OK_SEC
+                "視準がずれています（水平 {}・鉛直 {}。{:.0}″以内に合わせてください）。",
+                format_dms_signed(arcsec(*dh_sec)),
+                format_dms_signed(arcsec(*dv_sec)),
+                SIGHT_OK_SEC
             ),
         }
     }
@@ -422,6 +424,8 @@ pub struct Snapshot {
     pub timer_running: bool,
     pub loops: u32,
     pub telescope_hz: f64,
+    /// 器械から見た照準部の向き（rad）。器械自体の向きを除いた分で、3Dの照準部を回す量
+    pub telescope_hz_local: f64,
     pub telescope_zenith: f64,
     pub telescope_dir: Vec3,
     pub trunnion: Option<Vec3>,
@@ -1147,6 +1151,14 @@ impl Simulator {
         let electronic = pose.as_ref().map(ElectronicBubble::from_pose);
         let trunnion = pose.as_ref().map(|p| p.trunnion());
         let hr_reading = (self.obs.hz - self.obs.circle_offset).rem_euclid(2.0 * PI);
+        // 器械の y 軸（C の側）の方位を引くと、器械の中での照準部の向きになる
+        let telescope_hz_local = match pose.as_ref() {
+            Some(p) => {
+                let y = p.rot.col(1);
+                (self.obs.hz - y.x.atan2(y.y)).rem_euclid(2.0 * PI)
+            }
+            None => self.obs.hz,
+        };
         let sight = match (self.phase, self.selected_step, trunnion) {
             (Phase::Observation, 9, Some(eye)) => {
                 Some(sight_view(1, &self.obs, eye, backsight_target_world()))
@@ -1184,6 +1196,7 @@ impl Simulator {
             timer_running: self.timer.running(),
             loops: self.loops,
             telescope_hz: self.obs.hz,
+            telescope_hz_local,
             telescope_zenith: self.obs.zenith,
             telescope_dir: line_of_sight(self.obs.hz, self.obs.zenith),
             trunnion,

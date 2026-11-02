@@ -6,7 +6,7 @@
 //!
 //! 手順・結果などの変化の少ない状態は、`ui_revision` が変わったときだけ `ui_state_json()` で受け取る。
 
-use ts_core::angle::Dms;
+use ts_core::angle::{arcsec, Dms};
 use ts_core::config;
 use ts_core::instrument::Thumb;
 use ts_core::sim::{
@@ -203,6 +203,7 @@ fn visit(s: &Snapshot, f: &mut dyn FnMut(&'static str, &[f64])) {
     f("timerRunning", &[b(s.timer_running)]);
     f("loops", &[s.loops as f64]);
     f("telHz", &[s.telescope_hz]);
+    f("telHzLocal", &[s.telescope_hz_local]);
     f("telZenith", &[s.telescope_zenith]);
     f("telDir", &s.telescope_dir.to_array());
     f("trunnionValid", &[b(s.trunnion.is_some())]);
@@ -223,6 +224,18 @@ fn visit(s: &Snapshot, f: &mut dyn FnMut(&'static str, &[f64])) {
     f(
         "sightDvSec",
         &[s.sight.map(|v| v.dv_sec).unwrap_or(f64::NAN)],
+    );
+    f(
+        "sightDhDms",
+        &s.sight
+            .map(|v| dms4(arcsec(v.dh_sec), false))
+            .unwrap_or([f64::NAN; 4]),
+    );
+    f(
+        "sightDvDms",
+        &s.sight
+            .map(|v| dms4(arcsec(v.dv_sec), false))
+            .unwrap_or([f64::NAN; 4]),
     );
     f("sightOk", &[b(s.sight.map(|v| v.ok).unwrap_or(false))]);
     f("bsTarget", &s.bs_target.to_array());

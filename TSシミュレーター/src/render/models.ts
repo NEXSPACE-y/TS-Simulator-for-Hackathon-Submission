@@ -391,8 +391,8 @@ export class World {
       const vialR = 0.011 - 0.0032;
       this.circBubble.position.x = (d[cn] ?? 0) * vialR;
       this.circBubble.position.z = -(d[cn + 1] ?? 0) * vialR;
-      // 照準部は望遠鏡の向き（北から時計回り）に回る
-      this.alidade.rotation.y = -(d[o.telHz] ?? 0);
+      // 照準部は望遠鏡の向き（北から時計回り）に回る。器械自体の向きはコアが除いてある
+      this.alidade.rotation.y = -(d[o.telHzLocal] ?? 0);
       this.telescope.rotation.x = Math.PI / 2 - (d[o.telZenith] ?? Math.PI / 2);
     }
 
