@@ -1,0 +1,19 @@
+[package]
+name = "ts-sim-wasm"
+description = "計算コアをTypeScriptに公開する薄い層（wasm-bindgen）。計算は書かない"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ts-sim-core = { path = "../core" }
+wasm-bindgen = "0.2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
