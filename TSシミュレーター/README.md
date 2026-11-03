@@ -57,8 +57,10 @@ src/
   bridge/   WASMの読み込みと呼び出し（TypeScriptからコアに触る窓口）
   render/   Three.jsのシーン、モデル、カメラ
   ui/       画面のパネル（React）
+  ai/       AI先輩（Claude）の中継を呼ぶ窓口
   main.tsx  起動処理
-tests/      Vitest（WASMとのつなぎ目の確認）
+relay/      AI先輩の中継（Vercel Functions。APIキーはここの環境変数にだけ置く）
+tests/      Vitest（WASMとのつなぎ目、AIの中継の確認）
 src-tauri/  デスクトップ版（Tauri 2）
 ```
 
@@ -69,6 +71,21 @@ src-tauri/  デスクトップ版（Tauri 2）
 
 - Web版：GitHub Pages（https://nexspace-y.github.io/TS-Simulator-for-Hackathon-Submission/ ）。`main` に push すると、`.github/workflows/pages.yml` でビルドして公開する。事前にリポジトリの Settings → Pages → Source を「GitHub Actions」にしておく
 - デスクトップ版：GitHub Actions（`.github/workflows/desktop.yml`）で Windows / macOS 向けにビルドし、GitHub Releases の下書きに置く
+
+### AI先輩の中継（Vercel Functions）
+
+AI先輩（Claude）は、`relay/` の中継を通して呼びます。Web版とデスクトップ版はこの中継だけを呼び、APIキーは中継の環境変数にだけ置きます（コードやブラウザには出しません）。中継が受け付けるのは決まった形のデータだけで、AIへの指示文は中継の中で組み立てます。
+
+中継の作り方（Vercel で一度だけ）：
+
+1. Vercel の「Add New → Project」で、このリポジトリを読み込む
+2. Project Name を `ts-simulator-ai` にする（URL が `https://ts-simulator-ai.vercel.app` になる。別の名前にしたときは `src/ai/config.ts` の URL も変える）
+3. Root Directory を `TSシミュレーター/relay`、Framework Preset を「Other」にする
+4. Environment Variables に `ANTHROPIC_API_KEY`（Anthropic Console で作ったキー）を登録して、Deploy する
+5. Anthropic Console で、月の利用上限を設定する（使いすぎを止める一番確かな歯止め）
+
+- 中継に届かないとき（ネットにつながっていない・中継が止まっている）は、AI機能だけ「使えません」と表示し、シミュレーターはそのまま使えます。
+- 開発サーバー（`npm run dev`）から試すときは、Vercel の環境変数 `AI_ALLOWED_ORIGINS` に `http://localhost:5173` を足します。
 
 ## 素材と表記
 

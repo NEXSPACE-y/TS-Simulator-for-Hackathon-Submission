@@ -107,6 +107,12 @@ export interface UiState {
   observation: ObservationView;
 }
 
+/** AI先輩に渡す事実1件（コアが作る見出しと値。AIには、これを言葉にさせるだけ） */
+export interface AiFact {
+  k: string;
+  v: string;
+}
+
 export interface DisplayConfig {
   centeringToleranceMm: number;
   tiltToleranceSec: number;

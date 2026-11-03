@@ -1,0 +1,9 @@
+{
+  "name": "ts-simulator-ai-relay",
+  "private": true,
+  "description": "TS実習シミュレーターのAI先輩の中継（Vercel Functions）。依存関係なし",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
