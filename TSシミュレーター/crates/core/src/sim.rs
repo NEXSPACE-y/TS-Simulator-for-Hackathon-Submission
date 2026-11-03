@@ -6,6 +6,7 @@
 use core::f64::consts::PI;
 
 use crate::angle::{arcsec, format_dms_circle, format_dms_signed, round_arcsec, to_arcsec};
+use crate::coach::{self, CoachLog, Fact, FrameSummary, LogKind, LoopRecord, ReviewInput};
 use crate::config::*;
 use crate::instrument::{
     tilt_within_tolerance, CircularBubble, ElectronicBubble, Instrument, InstrumentError,
@@ -604,6 +605,20 @@ pub struct Simulator {
     obs_rev: u32,
     ui_revision: u64,
     ui_sig: UiSignature,
+    /// AI先輩のための操作の記録
+    coach: CoachLog,
+    /// frame() の中で操作を反映している間だけ true（このフレームの操作を集める）
+    recording: bool,
+    frame_ops: Vec<OpKind>,
+    frame_screws: [bool; 3],
+    frame_refusals: Vec<Refusal>,
+}
+
+/// AI先輩に渡す事実の種類
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FactKind {
+    /// 「据付完了」のあとの講評
+    Review,
 }
 
 impl Simulator {
@@ -655,6 +670,11 @@ impl Simulator {
             obs_rev: 0,
             ui_revision: 1,
             ui_sig: UiSignature::default(),
+            coach: CoachLog::default(),
+            recording: false,
+            frame_ops: Vec::with_capacity(8),
+            frame_screws: [false; 3],
+            frame_refusals: Vec::with_capacity(4),
         };
         sim.ui_sig = sim.signature();
         sim
@@ -706,9 +726,16 @@ impl Simulator {
         self.now_ms = now.max(self.now_ms);
         self.last_frame_ms = Some(now);
         let dt = dt_ms / 1000.0;
+        let before = self.coach_objective();
+        self.frame_ops.clear();
+        self.frame_screws = [false; 3];
+        self.frame_refusals.clear();
+        self.recording = true;
         for c in commands {
             self.apply(*c, dt);
         }
+        self.recording = false;
+        self.update_coach(dt_ms, before);
         self.refresh_revision();
     }
 
@@ -774,6 +801,9 @@ impl Simulator {
             Command::Observe => self.observe(),
         };
         if let Err(r) = result {
+            if self.recording {
+                self.frame_refusals.push(r);
+            }
             self.notify(NoticeKind::Info, r.message());
         }
     }
@@ -793,6 +823,9 @@ impl Simulator {
     /// 操作が成功したあとの共通処理：タイマー開始、手順外の注意、完了済みの記録
     fn after_op(&mut self, kind: OpKind) {
         self.timer.start(self.now_ms);
+        if self.recording {
+            self.frame_ops.push(kind);
+        }
         match self.mode {
             Mode::Textbook => {
                 if !textbook_allows(self.guided_step, kind) {
@@ -808,7 +841,9 @@ impl Simulator {
                             self.guided_step, cur.short
                         ),
                     };
-                    self.notify(NoticeKind::Warning, text);
+                    if self.notify(NoticeKind::Warning, text) {
+                        self.coach.textbook_warnings += 1;
+                    }
                 }
             }
             Mode::Field => {
@@ -898,6 +933,9 @@ impl Simulator {
     pub fn turn_screw(&mut self, screw: usize, thumb: Thumb, turns: f64) -> Result<(), Refusal> {
         self.ensure_setup()?;
         self.inst.turn_screw(screw, thumb, turns)?;
+        if self.recording {
+            self.frame_screws[screw.min(2)] = true;
+        }
         self.after_op(OpKind::Screw);
         Ok(())
     }
@@ -929,11 +967,13 @@ impl Simulator {
             .transpose()
             .mul_vec(Vec3::new(d[0], d[1], 0.0));
         let tilt = self.tripod.head.tilt();
+        let before = (!self.slid_since_loosen).then(|| self.loop_record());
         self.inst.slide_by([local.x, local.y], tilt)?;
-        if !self.slid_since_loosen {
+        if let Some(rec) = before {
             // ループ回数：手順6（器械ずらし）を行った回数（SPEC 5.1）
             self.loops += 1;
             self.slid_since_loosen = true;
+            self.coach.start_loop(rec);
         }
         self.any_slide = true;
         self.after_op(OpKind::Slide);
@@ -1019,6 +1059,8 @@ impl Simulator {
         if passed {
             self.field_done = [true; 7];
             self.guided_step = 7;
+        } else {
+            self.coach.failed_completions += 1;
         }
         self.judgement.as_ref().ok_or(Refusal::NoJudgement)
     }
@@ -1481,10 +1523,11 @@ impl Simulator {
         }
     }
 
-    fn notify(&mut self, kind: NoticeKind, text: String) {
+    /// お知らせを出す。同じ文を続けて出すときは間をあける（出したら true）
+    fn notify(&mut self, kind: NoticeKind, text: String) -> bool {
         if let Some(last) = &self.notice {
             if last.text == text && self.now_ms - self.notice_time < WARNING_REPEAT_MS {
-                return;
+                return false;
             }
         }
         self.notice_seq += 1;
@@ -1494,6 +1537,111 @@ impl Simulator {
             text,
         });
         self.notice_time = self.now_ms;
+        true
+    }
+
+    // ------------------------------------------------------------------
+    // AI先輩：操作の記録と事実
+    // ------------------------------------------------------------------
+
+    /// 操作の記録（テスト・確認用）
+    pub fn coach_log(&self) -> &CoachLog {
+        &self.coach
+    }
+
+    /// 整準ネジで近づけたい値と、その許容（教科書モード手順3は求心ズレ mm、ほかは電子気泡の大きさ 秒）
+    fn coach_objective(&self) -> Option<(f64, f64)> {
+        let pose = self.inst.pose(&self.tripod.head)?;
+        if self.mode == Mode::Textbook && self.guided_step == 3 {
+            let l = pose.laser_point()?;
+            Some((l.x.hypot(l.y), TEXTBOOK_SCREW_CENTER_MM))
+        } else {
+            let (x, y) = pose.tilt_xy();
+            Some((to_arcsec(x).hypot(to_arcsec(y)), TILT_TOLERANCE_SEC))
+        }
+    }
+
+    /// ループ（器械ずらし）を始める直前の求心ズレと電子気泡
+    fn loop_record(&self) -> LoopRecord {
+        let pose = self.inst.pose(&self.tripod.head);
+        LoopRecord {
+            centering_mm: pose
+                .as_ref()
+                .and_then(|p| p.laser_point())
+                .map(|l| l.x.hypot(l.y)),
+            tilt_sec: pose.map(|p| {
+                let (x, y) = p.tilt_xy();
+                to_arcsec(x).abs().max(to_arcsec(y).abs())
+            }),
+        }
+    }
+
+    /// このフレームの操作を記録する（据付中でタイマーが動いている間だけ）
+    fn update_coach(&mut self, dt_ms: f64, before: Option<(f64, f64)>) {
+        if self.phase != Phase::Setup || !self.timer.running() {
+            return;
+        }
+        let after = self.coach_objective();
+        let screws = self.frame_screws.iter().filter(|s| **s).count();
+        let (worse, better) = match (before, after) {
+            (Some((b, _)), Some((a, tol))) if screws > 0 => (a > b + 1e-6 && a > tol, a < b - 1e-6),
+            _ => (false, false),
+        };
+        let kind = self.frame_ops.iter().find_map(|k| match k {
+            OpKind::MoveLegs => Some(LogKind::MoveLegs),
+            OpKind::PressLeg => Some(LogKind::PressLeg),
+            OpKind::LegLength => Some(LogKind::LegLength),
+            OpKind::Mount => Some(LogKind::Mount),
+            OpKind::Clamp => Some(LogKind::Clamp),
+            OpKind::Slide => Some(LogKind::Slide),
+            OpKind::Screw => None,
+        });
+        let has = |k: OpKind| self.frame_ops.contains(&k);
+        let summary = FrameSummary {
+            step: self.current_step(),
+            dt_ms,
+            t_ms: self.timer.elapsed(self.now_ms),
+            kind,
+            screws,
+            worse,
+            better,
+            leg_length: has(OpKind::LegLength),
+            slide: has(OpKind::Slide),
+            move_legs: has(OpKind::MoveLegs),
+            screw_limit: self.frame_refusals.contains(&Refusal::ScrewLimit),
+            clamp_refused: self.frame_refusals.contains(&Refusal::ClampTight),
+        };
+        self.coach.account(&summary);
+    }
+
+    /// AI先輩に渡す事実（まだ出せないときは None）
+    pub fn ai_facts(&self, kind: FactKind) -> Option<Vec<Fact>> {
+        match kind {
+            FactKind::Review => self.review_facts(),
+        }
+    }
+
+    fn review_facts(&self) -> Option<Vec<Fact>> {
+        let j = self.judgement.as_ref()?;
+        let v = judgement_view(j);
+        let steps = match self.mode {
+            Mode::Textbook => textbook_steps(),
+            Mode::Field => field_steps(),
+        };
+        Some(coach::review_facts(&ReviewInput {
+            textbook: self.mode == Mode::Textbook,
+            passed: v.passed,
+            rating: v.rating_text.as_deref(),
+            time_text: &v.time_text,
+            loops: v.loops,
+            centering_text: &v.centering_text,
+            tilt_x_text: &v.tilt_x_text,
+            tilt_y_text: &v.tilt_y_text,
+            clamp_tight: j.clamp_tight,
+            reasons: &v.reasons,
+            steps: &steps,
+            log: &self.coach,
+        }))
     }
 
     fn signature(&self) -> UiSignature {

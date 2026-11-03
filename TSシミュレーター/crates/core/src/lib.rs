@@ -4,6 +4,7 @@
 //! WASM・Tauri・ブラウザには依存しない純粋なRust。panicさせない。
 
 pub mod angle;
+pub mod coach;
 pub mod config;
 pub mod instrument;
 pub mod math;

@@ -61,6 +61,9 @@ describe('WASMとのつなぎ目', () => {
     expect(ui.phase).toBe('setupResult');
     expect(ui.judgement?.passed).toBe(false);
     expect(ui.judgement?.reasons.some((r) => r.includes('定心桿'))).toBe(true);
+    // AI先輩の講評に渡す事実も、コアから受け取れる
+    const facts = bridge.aiFacts('review');
+    expect(facts?.find((f) => f.k === '結果')?.v).toBe('不合格');
   });
 
   it('度分秒の変換はコアの関数を使う', () => {

@@ -927,6 +927,9 @@ button.complete {
 
 .modal {
   width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -982,6 +985,52 @@ button.complete {
 
 .modal-actions button {
   touch-action: manipulation;
+}
+
+/* ---------------- AI先輩 ---------------- */
+
+.senpai-box {
+  margin: 10px 0 4px;
+}
+
+.senpai-ask {
+  width: 100%;
+}
+
+.senpai-answer {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.senpai-answer.is-error {
+  border-left-color: var(--warn);
+}
+
+.senpai-label {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.senpai-text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.senpai-answer.is-loading .senpai-text {
+  color: var(--muted);
+}
+
+.senpai-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .toast {

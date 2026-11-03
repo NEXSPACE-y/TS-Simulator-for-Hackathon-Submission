@@ -1,5 +1,6 @@
-// 「据付完了」を押したあとの結果画面（SPEC 5.4）
+// 「据付完了」を押したあとの結果画面（SPEC 5.4）。AI先輩の講評も、ここで聞ける。
 
+import { SenpaiAnswer, useSenpai } from './aiCommon';
 import { useSim, useUi } from './hooks';
 
 export function ResultModal(props: { onRestart: () => void }) {
@@ -32,6 +33,7 @@ export function ResultModal(props: { onRestart: () => void }) {
           </ul>
         )}
         <p className="note">目安：3分で合格、2分で熟練。</p>
+        <AiReview />
         <div className="modal-actions">
           {j.passed ? (
             <>
@@ -50,5 +52,26 @@ export function ResultModal(props: { onRestart: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** AI先輩の講評：コアがまとめた操作の記録（遠回りした箇所など）を、AIに言葉にしてもらう */
+function AiReview() {
+  const { bridge } = useSim();
+  const { state, run } = useSenpai();
+  const ask = () => {
+    const facts = bridge.aiFacts('review');
+    if (facts) void run('review', facts);
+  };
+  const canAsk = state.status === 'idle' || state.status === 'error';
+  return (
+    <section className="senpai-box">
+      {canAsk && (
+        <button type="button" className="senpai-ask" onClick={ask}>
+          {state.status === 'error' ? 'もう一度聞く' : 'AI先輩の講評を聞く'}
+        </button>
+      )}
+      <SenpaiAnswer state={state} />
+    </section>
   );
 }

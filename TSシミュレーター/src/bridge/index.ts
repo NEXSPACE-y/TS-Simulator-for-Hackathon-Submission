@@ -11,7 +11,7 @@ import init, {
   frameLayoutJson,
   type InitInput,
 } from './pkg/ts_sim.js';
-import type { CommandName, DisplayConfig, UiState } from './types';
+import type { AiFact, CommandName, DisplayConfig, UiState } from './types';
 
 export type * from './types';
 
@@ -95,6 +95,10 @@ export type FrameListener = (f: Frame) => void;
 export type UiListener = (u: UiState) => void;
 /** 押している間の操作を、毎フレーム返す関数（[コード名, a, b, c] の列） */
 export type HoldProvider = () => ReadonlyArray<readonly [CommandName, number, number, number]>;
+
+/** AI先輩に渡す事実の種類（コアの番号）。review＝据付の講評 */
+const AI_FACT_CODES = { review: 1 } as const;
+export type AiFactKind = keyof typeof AI_FACT_CODES;
 
 /** 0＝教科書モード、1＝現場モード */
 export const ModeId = { Textbook: 0, Field: 1 } as const;
@@ -191,6 +195,11 @@ export class Bridge {
 
   getUi(): UiState {
     return this.ui;
+  }
+
+  /** AI先輩に渡す事実（コアが作る。まだ出せないときは null）。ボタンを押したときなどにだけ呼ぶ */
+  aiFacts(kind: AiFactKind): AiFact[] | null {
+    return JSON.parse(this.sim.aiFactsJson(AI_FACT_CODES[kind])) as AiFact[] | null;
   }
 
   onFrame(l: FrameListener): () => void {

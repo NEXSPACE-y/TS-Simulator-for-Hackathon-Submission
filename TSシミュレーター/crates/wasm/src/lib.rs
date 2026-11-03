@@ -9,9 +9,10 @@
 use ts_core::angle::{arcsec, Dms};
 use ts_core::config;
 use ts_core::instrument::Thumb;
+use ts_core::coach::Fact;
 use ts_core::sim::{
-    centering_display_mm, time_parts, Command, Mode, NoticeKind, Phase, Simulator, Snapshot, Speed,
-    UiState,
+    centering_display_mm, time_parts, Command, FactKind, Mode, NoticeKind, Phase, Simulator,
+    Snapshot, Speed, UiState,
 };
 use wasm_bindgen::prelude::*;
 
@@ -299,6 +300,23 @@ fn jnum(v: f64) -> String {
     }
 }
 
+/// AI先輩に渡す事実の列（JSON：[{"k","v"}...]）
+fn facts_json(facts: &[Fact]) -> String {
+    let items: Vec<String> = facts
+        .iter()
+        .map(|f| format!(r#"{{"k":{},"v":{}}}"#, js(&f.key), js(&f.value)))
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// AI先輩の事実の種類のコード（TS側の bridge と同じ番号）
+fn fact_kind(code: u32) -> Option<FactKind> {
+    match code {
+        1 => Some(FactKind::Review),
+        _ => None,
+    }
+}
+
 fn ui_json(u: &UiState) -> String {
     let steps: Vec<String> = u
         .steps
@@ -499,6 +517,15 @@ impl Sim {
     pub fn ui_state_json(&self) -> String {
         ui_json(&self.inner.ui_state())
     }
+
+    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評
+    #[wasm_bindgen(js_name = aiFactsJson)]
+    pub fn ai_facts_json(&self, kind: u32) -> String {
+        fact_kind(kind)
+            .and_then(|k| self.inner.ai_facts(k))
+            .map(|f| facts_json(&f))
+            .unwrap_or_else(|| "null".into())
+    }
 }
 
 /// 毎フレームの数値の並び（JSON：[{"name","offset","length"}...]）
@@ -599,6 +626,16 @@ mod tests {
     #[test]
     fn json_escapes_quotes() {
         assert_eq!(js("a\"b\\c"), "\"a\\\"b\\\\c\"");
+    }
+
+    #[test]
+    fn ai_facts_json_is_null_until_available() {
+        let mut sim = Sim::new(1, 1);
+        assert_eq!(sim.ai_facts_json(1), "null");
+        assert_eq!(sim.ai_facts_json(99), "null");
+        sim.frame(0.0, &[10.0, 0.0, 0.0, 0.0]);
+        let j = sim.ai_facts_json(1);
+        assert!(j.starts_with("[{\"k\":"), "{}", j);
     }
 
     #[test]
