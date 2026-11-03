@@ -136,3 +136,93 @@ fn sliding_with_clamp_tight_counts_once_per_attempt() {
     }
     assert_eq!(sim.coach_log().clamp_refusals, 1);
 }
+
+// ---------------------------------------------------------------------------
+// 次の操作（コアが向きを決める。AIはこれを言葉にするだけ）
+// ---------------------------------------------------------------------------
+
+use ts_core::coach::{level_hint, slide_hint};
+use ts_core::math::Mat3;
+use ts_core::tripod::HeadPose;
+
+fn level_head() -> HeadPose {
+    HeadPose {
+        center: Vec3::new(0.0, 0.0, 1250.0),
+        rot: Mat3::IDENTITY,
+    }
+}
+
+#[test]
+fn level_hint_follows_the_left_thumb_rule() {
+    // A・Bを内側へ回すと気泡は＋X（左手親指の向き）。戻すには外側へ
+    let mut inst = Instrument::default();
+    assert!(inst.turn_screw(0, Thumb::Right, 0.05).is_ok());
+    assert!(inst.turn_screw(1, Thumb::Left, 0.05).is_ok());
+    let Some(h) = level_hint(&inst, &level_head()) else {
+        unreachable!("傾いているので次の操作がある");
+    };
+    assert!(h.contains("A・Bを同時に外側へ"), "{}", h);
+    assert!(h.contains("Xがいま+"), "{}", h);
+}
+
+#[test]
+fn level_hint_uses_screw_c_for_y() {
+    // Cを上げる（親指を左）と＋Y。戻すには親指を右へ
+    let mut inst = Instrument::default();
+    assert!(inst.turn_screw(2, Thumb::Left, 0.05).is_ok());
+    let Some(h) = level_hint(&inst, &level_head()) else {
+        unreachable!();
+    };
+    assert!(h.contains("整準ネジCを、親指を右へ"), "{}", h);
+}
+
+#[test]
+fn slide_hint_points_back_to_the_station() {
+    // レーザー点が測点の右（東）2 mm にある → 器械を左へずらす
+    let h = slide_hint([2.0, 0.0], true);
+    assert!(h.contains("定心桿を緩めて"), "{}", h);
+    assert!(h.contains("左へ約2.0 mm"), "{}", h);
+    let h = slide_hint([0.0, -1.5], false);
+    assert!(h.contains("奥へ約1.5 mm"), "{}", h);
+}
+
+#[test]
+fn status_facts_carry_the_next_action() {
+    // 始めたばかり：三脚は測点から離れていて、踏み込んでいない
+    let sim = Simulator::new(Mode::Field, 5);
+    let Some(facts) = sim.ai_facts(FactKind::Status) else {
+        unreachable!("いまの状態はいつでもある");
+    };
+    let next = value(&facts, "次の操作").unwrap_or("");
+    assert!(next.contains("三脚ごと"), "{}", next);
+    assert!(value(&facts, "左手親指の法則").is_some());
+    assert!(facts.len() <= 60);
+    assert!(facts
+        .iter()
+        .all(|f| f.value.chars().count() <= 240 && f.key.chars().count() <= 40));
+}
+
+#[test]
+fn next_action_after_leveling_is_complete() {
+    let sim = level_sim();
+    assert!(sim.next_action().contains("「据付完了」を押す"), "{}", sim.next_action());
+}
+
+#[test]
+fn next_action_in_observation_starts_with_the_eyepiece() {
+    let mut sim = level_sim();
+    sim.frame(0.0, &[Command::CompleteSetup]);
+    sim.frame(10.0, &[Command::StartObservation]);
+    assert!(sim.next_action().contains("電子平板"), "{}", sim.next_action());
+    sim.frame(
+        20.0,
+        &[Command::SetStation {
+            station: 0,
+            backsight: 1,
+            height_m: 1.5,
+        }],
+    );
+    let a = sim.next_action();
+    // 観測を始めたときは、十字線がぼやけている（またはターゲットが視野から遠い）
+    assert!(a.contains("接眼レンズ") || a.contains("照準器"), "{}", a);
+}

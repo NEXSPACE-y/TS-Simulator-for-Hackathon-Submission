@@ -1033,6 +1033,57 @@ button.complete {
   color: var(--muted);
 }
 
+.ai-drawer {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 9;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.ai-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-drawer-title {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.ai-examples button {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.ai-ask-form {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-ask-form input {
+  flex: 1;
+  min-width: 0;
+}
+
 .toast {
   position: fixed;
   left: 50%;

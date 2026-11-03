@@ -4,11 +4,15 @@
 //! AI（中継）には、ここで作った事実を言葉にさせるだけにする。
 //! 基準タイムなどの目安は config.rs にまとめる（値はすべて仮）。
 
+use crate::angle::to_arcsec;
 use crate::config::{
-    CENTERING_TOLERANCE_MM, FIELD_STEP_REF_SEC, OP_LOG_MAX, REVIEW_LOOPS_REF, REVIEW_WRONG_WAY_SEC,
-    SLIDE_BEFORE_LEVEL_SEC, STEP_VISITS_MAX, TEXTBOOK_STEP_REF_SEC, TILT_TOLERANCE_SEC,
+    CENTERING_TOLERANCE_MM, FIELD_STEP_REF_SEC, LEG_LENGTH_MAX_MM, LEG_LENGTH_MIN_MM, OP_LOG_MAX,
+    REVIEW_LOOPS_REF, REVIEW_WRONG_WAY_SEC, SLIDE_BEFORE_LEVEL_SEC, STEP_VISITS_MAX,
+    TEXTBOOK_STEP_REF_SEC, TILT_TOLERANCE_SEC,
 };
+use crate::instrument::{CircularBubble, Instrument, InstrumentPose, Thumb};
 use crate::steps::StepText;
+use crate::tripod::{HeadPose, Tripod};
 
 /// AIに渡す事実1件（見出しと値。どちらも短い日本語）
 #[derive(Clone, Debug, PartialEq)]
@@ -471,6 +475,210 @@ pub fn review_facts(r: &ReviewInput) -> Vec<Fact> {
     f
 }
 
+// ---------------------------------------------------------------------------
+// 次の操作（どのネジをどちらへ・どちらへずらすか）。実際に少し動かしてみて、良くなるほうを選ぶ
+// ---------------------------------------------------------------------------
+
+/// 向きの言葉。操作する人は手前（南）に立って奥（北）を向く：右＝東、奥＝北。`v`＝[東, 北]
+pub fn direction_words(v: [f64; 2]) -> &'static str {
+    let (e, n) = (v[0], v[1]);
+    let (ae, an) = (e.abs(), n.abs());
+    if ae < 0.4 * an {
+        if n >= 0.0 {
+            "奥"
+        } else {
+            "手前"
+        }
+    } else if an < 0.4 * ae {
+        if e >= 0.0 {
+            "右"
+        } else {
+            "左"
+        }
+    } else {
+        match (e >= 0.0, n >= 0.0) {
+            (true, true) => "右奥",
+            (false, true) => "左奥",
+            (true, false) => "右手前",
+            (false, false) => "左手前",
+        }
+    }
+}
+
+/// 整準ネジの回し方の候補
+#[derive(Clone, Copy)]
+struct ScrewMove {
+    turns: &'static [(usize, Thumb)],
+    text: &'static str,
+}
+
+/// 電子気泡の X（A→B の向き）を直す：A・B を同時に
+const LEVEL_X: [ScrewMove; 2] = [
+    ScrewMove {
+        turns: &[(0, Thumb::Right), (1, Thumb::Left)],
+        text: "整準ネジA・Bを同時に内側へ回す（親指どうしを近づける）",
+    },
+    ScrewMove {
+        turns: &[(0, Thumb::Left), (1, Thumb::Right)],
+        text: "整準ネジA・Bを同時に外側へ回す（親指どうしを離す）",
+    },
+];
+
+/// 電子気泡の Y（C の向き）を直す：C だけ
+const LEVEL_Y: [ScrewMove; 2] = [
+    ScrewMove {
+        turns: &[(2, Thumb::Left)],
+        text: "整準ネジCを、親指を左へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(2, Thumb::Right)],
+        text: "整準ネジCを、親指を右へ動かす向きに回す",
+    },
+];
+
+/// レーザー点を動かす（教科書モード手順3）：1本ずつと、A・B同時
+const ANY_SCREW: [ScrewMove; 8] = [
+    ScrewMove {
+        turns: &[(0, Thumb::Left)],
+        text: "整準ネジAを、親指を左へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(0, Thumb::Right)],
+        text: "整準ネジAを、親指を右へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(1, Thumb::Left)],
+        text: "整準ネジBを、親指を左へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(1, Thumb::Right)],
+        text: "整準ネジBを、親指を右へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(2, Thumb::Left)],
+        text: "整準ネジCを、親指を左へ動かす向きに回す",
+    },
+    ScrewMove {
+        turns: &[(2, Thumb::Right)],
+        text: "整準ネジCを、親指を右へ動かす向きに回す",
+    },
+    LEVEL_X[0],
+    LEVEL_X[1],
+];
+
+/// 試しに回す量 [回転]
+const TRY_TURNS: f64 = 0.01;
+
+/// 候補を試しに回して、目標の値が一番小さくなるものを選ぶ（良くならなければ None）
+fn best_screw_move<'a>(
+    inst: &Instrument,
+    head: &HeadPose,
+    moves: &'a [ScrewMove],
+    objective: impl Fn(&InstrumentPose) -> Option<f64>,
+) -> Option<&'a ScrewMove> {
+    let now = objective(&inst.pose(head)?)?;
+    let mut best: Option<(&ScrewMove, f64)> = None;
+    for m in moves {
+        let mut trial = inst.clone();
+        if m
+            .turns
+            .iter()
+            .any(|(k, t)| trial.turn_screw(*k, *t, TRY_TURNS).is_err())
+        {
+            continue;
+        }
+        let Some(v) = trial.pose(head).and_then(|p| objective(&p)) else {
+            continue;
+        };
+        if v < now && best.map(|(_, b)| v < b).unwrap_or(true) {
+            best = Some((m, v));
+        }
+    }
+    best.map(|(m, _)| m)
+}
+
+/// 電子気泡を合わせる整準ネジの回し方（大きくずれているほうの軸から）
+pub fn level_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
+    let (x, y) = inst.pose(head)?.tilt_xy();
+    let (xs, ys) = (to_arcsec(x), to_arcsec(y));
+    let (moves, axis, name, v): (&[ScrewMove], usize, &str, f64) = if xs.abs() >= ys.abs() {
+        (&LEVEL_X, 0, "X", xs)
+    } else {
+        (&LEVEL_Y, 1, "Y", ys)
+    };
+    let m = best_screw_move(inst, head, moves, |p| {
+        let (a, b) = p.tilt_xy();
+        Some(to_arcsec(if axis == 0 { a } else { b }).abs())
+    })?;
+    Some(format!(
+        "{}（電子気泡の{}がいま{:+.0}″。0に近づける）",
+        m.text, name, v
+    ))
+}
+
+/// レーザー点を測点に近づける整準ネジの回し方（教科書モード手順3）
+pub fn screw_center_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
+    let m = best_screw_move(inst, head, &ANY_SCREW, |p| {
+        p.laser_point().map(|l| l.x.hypot(l.y))
+    })?;
+    Some(format!("{}（レーザー点を測点に近づける）", m.text))
+}
+
+pub const LEG_LABELS: [&str; 3] = ["脚1（奥）", "脚2（左手前）", "脚3（右手前）"];
+
+/// 円形気泡（器械が無ければ脚頭の傾き）を合わせる脚の伸縮。試しに伸縮して、良くなるものを選ぶ
+pub fn leg_hint(tripod: &Tripod, inst: &Instrument) -> Option<String> {
+    let measure = |t: &Tripod| -> Option<f64> {
+        match inst.pose(&t.head) {
+            Some(p) => Some(CircularBubble::from_pose(&p).raw_mm),
+            None => Some(t.head.tilt()),
+        }
+    };
+    let now = measure(tripod)?;
+    let mut best: Option<(usize, bool, f64)> = None;
+    for leg in 0..3 {
+        for extend in [true, false] {
+            let mut t = tripod.clone();
+            let mut lens = t.leg_len;
+            let d = if extend { 2.0 } else { -2.0 };
+            lens[leg] = (lens[leg] + d).clamp(LEG_LENGTH_MIN_MM, LEG_LENGTH_MAX_MM);
+            if t.try_set(t.feet, lens).is_err() {
+                continue;
+            }
+            let Some(v) = measure(&t) else { continue };
+            if v < now && best.map(|(_, _, b)| v < b).unwrap_or(true) {
+                best = Some((leg, extend, v));
+            }
+        }
+    }
+    let (leg, extend, _) = best?;
+    let what = if inst.mounted {
+        "円形気泡を中心の円に近づける"
+    } else {
+        "脚頭を水平に近づける"
+    };
+    Some(format!(
+        "{}を{}（{}）",
+        LEG_LABELS[leg],
+        if extend { "伸ばす" } else { "縮める" },
+        what
+    ))
+}
+
+/// 器械ずらしで求心を合わせる向き（`centering`＝レーザー点 − 測点 [東, 北] mm）
+pub fn slide_hint(centering: [f64; 2], clamp_tight: bool) -> String {
+    let d = centering[0].hypot(centering[1]);
+    let dir = direction_words([-centering[0], -centering[1]]);
+    if clamp_tight {
+        format!(
+            "定心桿を緩めて、器械を{}へ約{:.1} mmずらし、終わったら締める",
+            dir, d
+        )
+    } else {
+        format!("器械を{}へ約{:.1} mmずらし、終わったら定心桿を締める", dir, d)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +773,14 @@ mod tests {
         let f = review_facts(&r);
         assert!(f.iter().all(|x| x.value.chars().count() <= 240 && x.key.chars().count() <= 40));
         assert!(f.len() <= 60);
+    }
+
+    #[test]
+    fn direction_words_follow_the_operator_view() {
+        assert_eq!(direction_words([1.0, 0.0]), "右");
+        assert_eq!(direction_words([0.0, -1.0]), "手前");
+        assert_eq!(direction_words([-1.0, 1.0]), "左奥");
+        assert_eq!(direction_words([0.1, 1.0]), "奥");
     }
 
     #[test]

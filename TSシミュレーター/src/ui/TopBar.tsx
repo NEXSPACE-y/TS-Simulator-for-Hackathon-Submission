@@ -5,7 +5,13 @@ import type { Frame } from '../bridge';
 import { dmsSignedAt, fixed, flag, timeAt } from '../bridge/format';
 import { setText, useFrame, useUi } from './hooks';
 
-export function TopBar(props: { onRestart: () => void; quality: 'light' | 'standard'; onQuality: () => void }) {
+export function TopBar(props: {
+  onRestart: () => void;
+  quality: 'light' | 'standard';
+  onQuality: () => void;
+  aiOpen: boolean;
+  onAi: () => void;
+}) {
   const ui = useUi();
   const cent = useRef<HTMLSpanElement>(null);
   const tx = useRef<HTMLSpanElement>(null);
@@ -51,6 +57,15 @@ export function TopBar(props: { onRestart: () => void; quality: 'light' | 'stand
         </div>
       </dl>
       <div className="top-actions">
+        <button
+          type="button"
+          className={`ghost ai-toggle ${props.aiOpen ? 'is-on' : ''}`}
+          aria-expanded={props.aiOpen}
+          onClick={props.onAi}
+          title="AI先輩に質問する"
+        >
+          AI先輩
+        </button>
         <button type="button" className="ghost" onClick={props.onQuality} title="画質の切り替え">
           画質：{props.quality === 'standard' ? '標準' : '軽量'}
         </button>

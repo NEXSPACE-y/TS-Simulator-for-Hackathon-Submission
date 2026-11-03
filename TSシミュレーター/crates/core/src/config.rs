@@ -255,3 +255,9 @@ pub const SLIDE_BEFORE_LEVEL_SEC: f64 = 60.0;
 pub const OP_LOG_MAX: usize = 400;
 /// 手順の流れの記録の上限（件）
 pub const STEP_VISITS_MAX: usize = 60;
+/// 次の操作の目安：三脚ごと運ぶか、もう踏み込むか（レーザー点と測点の距離 mm。現場モード）
+pub const HINT_PLACE_MM: f64 = 30.0;
+/// 次の操作の目安：残りの脚を踏み込んでよいレーザー点のずれ [mm]（現場モード）
+pub const HINT_ROUGH_CENTER_MM: f64 = 3.0;
+/// 次の操作の目安：望遠鏡の視野から遠いとみなす視準のずれ [秒]（照準器を使う目安）
+pub const HINT_ROUGH_SIGHT_SEC: f64 = 1800.0;

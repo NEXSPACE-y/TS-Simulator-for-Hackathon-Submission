@@ -6,7 +6,7 @@
 use core::f64::consts::PI;
 
 use crate::angle::{arcsec, format_dms_circle, format_dms_signed, round_arcsec, to_arcsec};
-use crate::coach::{self, CoachLog, Fact, FrameSummary, LogKind, LoopRecord, ReviewInput};
+use crate::coach::{self, fact, CoachLog, Fact, FrameSummary, LogKind, LoopRecord, ReviewInput};
 use crate::config::*;
 use crate::instrument::{
     tilt_within_tolerance, CircularBubble, ElectronicBubble, Instrument, InstrumentError,
@@ -619,6 +619,8 @@ pub struct Simulator {
 pub enum FactKind {
     /// 「据付完了」のあとの講評
     Review,
+    /// いまの状態と次の操作（何でも質問）
+    Status,
 }
 
 impl Simulator {
@@ -1618,7 +1620,326 @@ impl Simulator {
     pub fn ai_facts(&self, kind: FactKind) -> Option<Vec<Fact>> {
         match kind {
             FactKind::Review => self.review_facts(),
+            FactKind::Status => Some(self.status_facts()),
         }
+    }
+
+    /// いまの手順の名前
+    fn step_label(&self, step: u8) -> &'static str {
+        let i = (step as usize).saturating_sub(1);
+        let t = match (self.phase, self.mode) {
+            (Phase::Observation, _) => observation_steps().get(i.saturating_sub(7)).copied(),
+            (_, Mode::Textbook) => textbook_steps().get(i).copied(),
+            (_, Mode::Field) => field_steps().get(i).copied(),
+        };
+        t.map(|t| t.label).unwrap_or("")
+    }
+
+    /// いまの状態と次の操作（何でも質問のときにAIに渡す）
+    fn status_facts(&self) -> Vec<Fact> {
+        let s = self.snapshot();
+        let step = self.current_step();
+        let mut f = vec![
+            fact(
+                "モード",
+                match self.mode {
+                    Mode::Textbook => "教科書モード（教科書の手順を一歩ずつ）",
+                    Mode::Field => "現場モード（現場の手順。順番は自由）",
+                },
+            ),
+            fact(
+                "いまの場面",
+                match self.phase {
+                    Phase::Setup => "第1部：据付",
+                    Phase::SetupResult => "「据付完了」を押したあとの結果画面",
+                    Phase::Observation => "第2部：観測",
+                },
+            ),
+            fact(
+                "いまの手順",
+                format!("手順{}「{}」", step, self.step_label(step)),
+            ),
+        ];
+        if self.phase != Phase::Observation {
+            f.push(fact("タイム", format_time(s.elapsed_ms)));
+            f.push(fact(
+                "求心ズレ",
+                s.centering_mm
+                    .map(|c| {
+                        format!(
+                            "{:.1} mm（許容{} mm以内）",
+                            centering_display_mm(c),
+                            CENTERING_TOLERANCE_MM
+                        )
+                    })
+                    .unwrap_or_else(|| "---（器械がまだ載っていない）".into()),
+            ));
+            f.push(fact(
+                "電子気泡",
+                s.electronic
+                    .map(|e| {
+                        format!(
+                            "X {}・Y {}（許容±{:.0}″以内）",
+                            format_dms_signed(e.x),
+                            format_dms_signed(e.y),
+                            TILT_TOLERANCE_SEC
+                        )
+                    })
+                    .unwrap_or_else(|| "---".into()),
+            ));
+            f.push(fact(
+                "円形気泡",
+                match s.circular {
+                    Some(c) if c.in_circle => "中心の円に入っている",
+                    Some(_) => "中心の円に入っていない",
+                    None => "---",
+                },
+            ));
+            let planted = s.planted.iter().filter(|p| **p).count();
+            f.push(fact("脚の踏み込み", format!("{}本／3本", planted)));
+            f.push(fact(
+                "器械",
+                match (s.mounted, s.clamp_tight) {
+                    (false, _) => "まだ載っていない",
+                    (true, true) => "載っている・定心桿は締めている",
+                    (true, false) => "載っている・定心桿は緩めている",
+                },
+            ));
+            f.push(fact("ループ回数", format!("{}回", self.loops)));
+            if self.mode == Mode::Textbook && self.phase == Phase::Setup {
+                let (goal, ok) = self.textbook_goal(self.guided_step, &s);
+                f.push(fact(
+                    "この手順の目標",
+                    format!("{}（{}）", goal, if ok { "できている" } else { "まだ" }),
+                ));
+            }
+        } else {
+            let name = |i: Option<usize>| {
+                i.and_then(|i| KNOWN_POINTS.get(i))
+                    .map(|p| p.name)
+                    .unwrap_or("まだ選んでいない")
+            };
+            f.push(fact("電子平板の機械点", name(self.obs.station)));
+            f.push(fact("電子平板のBS点", name(self.obs.backsight)));
+            f.push(fact(
+                "電子平板の器械高",
+                self.obs
+                    .instrument_height_mm
+                    .map(|h| format!("{} m", format_m(h)))
+                    .unwrap_or_else(|| "まだ入れていない".into()),
+            ));
+            f.push(fact(
+                "観測",
+                format!(
+                    "BS {}・FS {}",
+                    if self.obs.bs.is_some() { "観測済み" } else { "まだ" },
+                    if self.obs.fs.is_some() { "観測済み" } else { "まだ" }
+                ),
+            ));
+            if let Some(o) = s.optics {
+                f.push(fact(
+                    "のぞき方",
+                    if o.peep_sight { "照準器" } else { "望遠鏡" },
+                ));
+                f.push(fact(
+                    "十字線・ピント",
+                    format!(
+                        "十字線は{}・ピントは{}",
+                        if o.reticle_ok { "くっきり" } else { "ぼやけている" },
+                        if o.focus_ok { "合っている" } else { "合っていない" }
+                    ),
+                ));
+            }
+            if let Some(v) = s.sight {
+                f.push(fact(
+                    "十字線とターゲットのずれ",
+                    format!(
+                        "水平{:+.0}″・鉛直{:+.0}″（{:.0}″以内で視準OK）",
+                        v.dh_sec, v.dv_sec, SIGHT_OK_SEC
+                    ),
+                ));
+            }
+        }
+        f.push(fact("次の操作", self.next_action()));
+        f.push(fact(
+            "整準ネジの並び",
+            "A＝左手前、B＝右手前、C＝奥（操作する人は手前に立つ）",
+        ));
+        f.push(fact(
+            "左手親指の法則",
+            "整準ネジ2本を同時に内側または外側へ回すと、気泡は左手の親指を動かす向きに動く",
+        ));
+        f.push(fact(
+            "6⇄7を繰り返すわけ",
+            "整準すると器械の傾きが変わってレーザー求心点が動き、器械をずらすと気泡が少し崩れる。だから求心と電子気泡の両方が許容に入るまで繰り返す",
+        ));
+        f
+    }
+
+    /// 次の操作（コアが決める。AIはこれを言葉にするだけ）
+    pub fn next_action(&self) -> String {
+        let s = self.snapshot();
+        match self.phase {
+            Phase::SetupResult => {
+                if self.judgement.as_ref().map(|j| j.passed).unwrap_or(false) {
+                    "結果画面の「第2部：観測へ進む」を押す".into()
+                } else {
+                    "結果画面の「続行する」を押して、不合格の理由を直す".into()
+                }
+            }
+            Phase::Observation => self.observation_action(&s),
+            Phase::Setup => match self.mode {
+                Mode::Field => self.field_action(&s),
+                Mode::Textbook => self.textbook_action(&s),
+            },
+        }
+    }
+
+    /// 据付の仕上げ：円形気泡 → 電子気泡 → 求心 → 定心桿 → 据付完了
+    fn finish_action(&self, s: &Snapshot) -> String {
+        if s.circular.map(|c| !c.in_circle).unwrap_or(false) {
+            return coach::leg_hint(&self.tripod, &self.inst)
+                .unwrap_or_else(|| "脚の伸縮で、円形気泡を中心の円に入れる".into());
+        }
+        if !s.electronic.map(|e| e.ok).unwrap_or(false) {
+            return coach::level_hint(&self.inst, &self.tripod.head)
+                .unwrap_or_else(|| "整準ネジで、電子気泡をX・Yとも±15″以内に合わせる".into());
+        }
+        if !s.centering_ok {
+            if let Some(c) = s.centering {
+                return coach::slide_hint(c, s.clamp_tight);
+            }
+        }
+        if !s.clamp_tight {
+            return "定心桿を締める".into();
+        }
+        "求心と電子気泡の両方が許容に入ったので「据付完了」を押す".into()
+    }
+
+    fn field_action(&self, s: &Snapshot) -> String {
+        let planted = s.planted.iter().filter(|p| **p).count();
+        if planted < 3 {
+            let p = match s.laser {
+                Some(l) => [l.x, l.y],
+                None => [s.head_center.x, s.head_center.y],
+            };
+            let d = p[0].hypot(p[1]);
+            let dir = coach::direction_words([-p[0], -p[1]]);
+            return if planted == 0 {
+                if d > HINT_PLACE_MM {
+                    format!(
+                        "三脚ごと{}へ約{:.0} mm運んで、レーザー点を測点に近づける",
+                        dir, d
+                    )
+                } else {
+                    "レーザー点が測点に近いので、どれか1本の脚を踏み込む".into()
+                }
+            } else if d > HINT_ROUGH_CENTER_MM {
+                format!(
+                    "踏み込んでいない脚を{}の方へ動かして、レーザー点を測点に近づける（いまのずれ約{:.0} mm）",
+                    dir, d
+                )
+            } else {
+                "レーザー点が測点に近いので、残りの脚も踏み込む".into()
+            };
+        }
+        self.finish_action(s)
+    }
+
+    fn textbook_action(&self, s: &Snapshot) -> String {
+        let (_, goal_ok) = self.textbook_goal(self.guided_step, s);
+        if goal_ok && self.guided_step < 7 {
+            return "この手順の目標はできているので「次の手順へ」を押す".into();
+        }
+        let head = &self.tripod.head;
+        match self.guided_step {
+            1 => {
+                let all = s.planted.iter().all(|p| *p);
+                if !all && s.head_offset_mm > TEXTBOOK_ROUGH_CENTER_MM {
+                    let c = s.head_center;
+                    format!(
+                        "三脚を{}へ約{:.0} mm運んで、脚頭の中心を測点の真上に近づける",
+                        coach::direction_words([-c.x, -c.y]),
+                        s.head_offset_mm
+                    )
+                } else if s.head_tilt_deg > TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI {
+                    coach::leg_hint(&self.tripod, &self.inst)
+                        .unwrap_or_else(|| "脚の伸縮で、脚頭をだいたい水平にする".into())
+                } else if !all {
+                    "脚を3本とも踏み込む".into()
+                } else {
+                    "脚頭の中心が測点から離れたまま踏み込んだので、「最初から」やり直すとよい".into()
+                }
+            }
+            2 => if s.mounted {
+                "定心桿を締める"
+            } else {
+                "「器械を載せて定心桿で固定する」を押す"
+            }
+            .into(),
+            3 => coach::screw_center_hint(&self.inst, head)
+                .unwrap_or_else(|| "整準ネジで、レーザー点を測点に合わせる".into()),
+            4 => coach::leg_hint(&self.tripod, &self.inst)
+                .unwrap_or_else(|| "脚の伸縮で、円形気泡を中心の円に入れる".into()),
+            5 => coach::level_hint(&self.inst, head)
+                .unwrap_or_else(|| "整準ネジで、電子気泡をX・Yとも±15″以内に合わせる".into()),
+            6 => match s.centering {
+                Some(c) if !s.centering_ok => coach::slide_hint(c, s.clamp_tight),
+                _ => "定心桿を締める".into(),
+            },
+            _ => self.finish_action(s),
+        }
+    }
+
+    fn observation_action(&self, s: &Snapshot) -> String {
+        let step = self.selected_step;
+        if step == 8 {
+            return "電子平板で、機械点（据えた点）とBS点（ターゲットが立っている点）を選び、器械高を巻尺で測って入れて「セット」を押す".into();
+        }
+        if step == 10 && self.obs.fs.is_some() {
+            return "FSの観測は終わり。観測した座標と設計値との差を確かめる".into();
+        }
+        let target = if step == 9 {
+            backsight_target_world()
+        } else {
+            foresight_target_world()
+        };
+        let (Some(o), Some(v), Some(eye)) = (s.optics, s.sight, s.trunnion) else {
+            return "器械が載っていない".into();
+        };
+        let dir = sight_words(v.dh_sec, v.dv_sec);
+        let rough = v.dh_sec.abs().max(v.dv_sec.abs()) > HINT_ROUGH_SIGHT_SEC;
+        if o.peep_sight {
+            return if rough {
+                format!("照準器をのぞいたまま、望遠鏡を{}へ回してターゲットを捉える", dir)
+            } else {
+                "ターゲットを捉えたので、望遠鏡に切り替える（Pキー）".into()
+            };
+        }
+        if !o.reticle_ok {
+            return "接眼レンズを回して、十字線をくっきりさせる".into();
+        }
+        if rough {
+            return format!(
+                "ターゲットが望遠鏡の視野から遠い（{}の方）ので、照準器（Pキー）で大まかに向ける",
+                dir
+            );
+        }
+        if !o.focus_ok {
+            let d_m = (target - eye).norm() / 1000.0;
+            let near = d_m > 0.0 && self.obs.focus_per_m < 1.0 / d_m;
+            return format!(
+                "合焦つまみを「{}」へ回して、ターゲットのピントを合わせる",
+                if near { "近くへ" } else { "遠くへ" }
+            );
+        }
+        if !v.ok {
+            return format!(
+                "望遠鏡を{}へ動かして、十字線をターゲットの中心に合わせる（いま水平{:+.0}″・鉛直{:+.0}″）",
+                dir, v.dh_sec, v.dv_sec
+            );
+        }
+        "十字線がターゲットに合ったので「測量」を押す".into()
     }
 
     fn review_facts(&self) -> Option<Vec<Fact>> {
@@ -1676,6 +1997,23 @@ impl Simulator {
             self.ui_sig = sig;
             self.ui_revision += 1;
         }
+    }
+}
+
+/// 望遠鏡を動かす向きの言葉（ずれ＝ターゲットが十字線の右・上にあると＋）
+fn sight_words(dh_sec: f64, dv_sec: f64) -> &'static str {
+    let h = dh_sec.abs() > SIGHT_OK_SEC;
+    let v = dv_sec.abs() > SIGHT_OK_SEC;
+    match (h, v, dh_sec > 0.0, dv_sec > 0.0) {
+        (true, true, true, true) => "右上",
+        (true, true, true, false) => "右下",
+        (true, true, false, true) => "左上",
+        (true, true, false, false) => "左下",
+        (true, false, true, _) => "右",
+        (true, false, false, _) => "左",
+        (false, true, _, true) => "上",
+        (false, true, _, false) => "下",
+        (false, false, _, _) => "そのまま",
     }
 }
 

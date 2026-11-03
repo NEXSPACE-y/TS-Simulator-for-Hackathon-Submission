@@ -313,6 +313,7 @@ fn facts_json(facts: &[Fact]) -> String {
 fn fact_kind(code: u32) -> Option<FactKind> {
     match code {
         1 => Some(FactKind::Review),
+        2 => Some(FactKind::Status),
         _ => None,
     }
 }
@@ -518,7 +519,7 @@ impl Sim {
         ui_json(&self.inner.ui_state())
     }
 
-    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評
+    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評、2＝いまの状態
     #[wasm_bindgen(js_name = aiFactsJson)]
     pub fn ai_facts_json(&self, kind: u32) -> String {
         fact_kind(kind)

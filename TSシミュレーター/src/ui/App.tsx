@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ModeId, type Bridge } from '../bridge';
 import type { Quality } from '../render/engine';
+import { AiDrawer } from './AiDrawer';
 import { DebugLog, isDebugMode } from './DebugLog';
 import { SimContext, useUi } from './hooks';
 import { InputManager } from './input';
@@ -97,15 +98,23 @@ export function App(props: { bridge: Bridge }) {
 
 function Simulator(props: { quality: Quality; onQuality: () => void; onRestart: () => void }) {
   const ui = useUi();
+  const [aiOpen, setAiOpen] = useState(false);
   return (
     <div className={`app phase-${ui.phase}`}>
-      <TopBar quality={props.quality} onQuality={props.onQuality} onRestart={props.onRestart} />
+      <TopBar
+        quality={props.quality}
+        onQuality={props.onQuality}
+        onRestart={props.onRestart}
+        aiOpen={aiOpen}
+        onAi={() => setAiOpen(!aiOpen)}
+      />
       <StepList />
       <main className="center">
         <Viewport quality={props.quality} />
       </main>
       <OperationPanel />
       <ResultModal onRestart={props.onRestart} />
+      {aiOpen && <AiDrawer onClose={() => setAiOpen(false)} />}
       <Toast />
     </div>
   );

@@ -96,8 +96,8 @@ export type UiListener = (u: UiState) => void;
 /** 押している間の操作を、毎フレーム返す関数（[コード名, a, b, c] の列） */
 export type HoldProvider = () => ReadonlyArray<readonly [CommandName, number, number, number]>;
 
-/** AI先輩に渡す事実の種類（コアの番号）。review＝据付の講評 */
-const AI_FACT_CODES = { review: 1 } as const;
+/** AI先輩に渡す事実の種類（コアの番号）。review＝据付の講評、status＝いまの状態と次の操作 */
+const AI_FACT_CODES = { review: 1, status: 2 } as const;
 export type AiFactKind = keyof typeof AI_FACT_CODES;
 
 /** 0＝教科書モード、1＝現場モード */
