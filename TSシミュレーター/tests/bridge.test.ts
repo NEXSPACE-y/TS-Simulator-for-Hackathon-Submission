@@ -79,4 +79,21 @@ describe('WASMとのつなぎ目', () => {
     expect(ui.mounted).toBe(false);
     expect(ui.goal).not.toBeNull();
   });
+
+  it('器械を載せる前は、脚頭の穴からのぞいた見え方が届き、載せるとレーザーに戻る', () => {
+    bridge.restart(ModeId.Textbook, 3);
+    bridge.frame(2000);
+    let f = bridge.current();
+    expect(f.data[f.o.peekValid]).toBe(1);
+    expect(f.data[f.o.laserValid]).toBe(0);
+    // のぞいた測点の位置は、脚頭の中心の反対向き（コアで計算した値がそのまま届く）
+    expect(f.data[f.o.peek]).toBeCloseTo(-f.data[f.o.headCenter], 6);
+    expect(f.data[f.o.peek + 1]).toBeCloseTo(-f.data[f.o.headCenter + 1], 6);
+    expect(bridge.config.headHoleViewMm).toBeGreaterThan(bridge.config.textbookRoughCenterMm);
+    bridge.send('mountInstrument');
+    bridge.frame(2016);
+    f = bridge.current();
+    expect(f.data[f.o.peekValid]).toBe(0);
+    expect(f.data[f.o.laserValid]).toBe(1);
+  });
 });

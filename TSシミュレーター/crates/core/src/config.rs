@@ -139,6 +139,8 @@ pub const MAX_FRAME_DT_MS: f64 = 100.0;
 
 /// 手順1：三脚頭の中心と測点の水平距離の上限 [mm]
 pub const TEXTBOOK_ROUGH_CENTER_MM: f64 = 30.0;
+/// 器械を載せる前に、脚頭の穴から真下をのぞいて測点が見える範囲（穴の中心からの半径）[mm]（仮）
+pub const HEAD_HOLE_VIEW_MM: f64 = 35.0;
 /// 手順1：三脚頭の傾きの上限 [rad]（だいたい水平）
 pub const TEXTBOOK_ROUGH_HEAD_TILT: f64 = deg(2.0);
 /// 手順3：整準ネジで合わせる求心ズレの上限 [mm]

@@ -483,6 +483,10 @@ pub struct Snapshot {
     pub centering: Option<[f64; 2]>,
     pub centering_mm: Option<f64>,
     pub centering_ok: bool,
+    /// 器械を載せる前に、脚頭の穴から真下をのぞいたときの測点の位置（穴の中心から、mm、[東, 北]）
+    pub peek: Option<[f64; 2]>,
+    /// 測点が穴の中に見えるか（穴の中心から HEAD_HOLE_VIEW_MM 以内）
+    pub peek_visible: bool,
     pub circular: Option<CircularBubble>,
     pub electronic: Option<ElectronicBubble>,
     pub instrument_height_mm: Option<f64>,
@@ -1548,6 +1552,11 @@ impl Simulator {
             _ => None,
         };
         let head_center = t.head.center;
+        // 真下をのぞくとみなす（脚頭の傾きは入れない）。測点は原点なので、穴の中心から見た測点は −脚頭の中心
+        let peek = (!self.inst.mounted).then(|| [-head_center.x, -head_center.y]);
+        let peek_visible = peek
+            .map(|p| p[0].hypot(p[1]) <= HEAD_HOLE_VIEW_MM)
+            .unwrap_or(false);
         Snapshot {
             feet: t.feet,
             hinges: t.hinge_points(),
@@ -1567,6 +1576,8 @@ impl Simulator {
             centering,
             centering_mm,
             centering_ok,
+            peek,
+            peek_visible,
             circular,
             electronic,
             instrument_height_mm: pose.as_ref().map(|p| p.instrument_height()),

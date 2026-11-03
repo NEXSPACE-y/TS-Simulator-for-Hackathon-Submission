@@ -2,8 +2,8 @@
 
 use ts_core::angle::{arcsec, deg, to_arcsec};
 use ts_core::config::{
-    CENTERING_TOLERANCE_MM, FS_ACTUAL_OFFSET_MM, FS_DESIGN, LEG_AZIMUTHS, SCREW_PITCH_MM,
-    SCREW_RADIUS_MM, SINK_MAX_MM, SINK_MIN_MM,
+    CENTERING_TOLERANCE_MM, FS_ACTUAL_OFFSET_MM, FS_DESIGN, HEAD_HOLE_VIEW_MM, LEG_AZIMUTHS,
+    SCREW_PITCH_MM, SCREW_RADIUS_MM, SINK_MAX_MM, SINK_MIN_MM,
 };
 use ts_core::instrument::{Instrument, InstrumentPose};
 use ts_core::math::{Mat3, Vec3};
@@ -209,6 +209,78 @@ fn leveling_moves_laser_point() {
     let c1 = centering(&sim);
     let moved = (c1[0] - c0[0]).hypot(c1[1] - c0[1]);
     assert!(moved > 1.0, "moved {moved}");
+}
+
+// ---------------------------------------------------------------------------
+// 器械を載せる前：脚頭の穴から真下をのぞく（教科書モード手順1）
+// ---------------------------------------------------------------------------
+
+/// 教科書モードで、脚頭の中心が測点から (cx, cy) mm の位置にある三脚（器械はまだ載せていない）
+fn textbook_tripod_at(cx: f64, cy: f64) -> Simulator {
+    let mut sim = Simulator::new(Mode::Textbook, 1);
+    let Ok(t) = Tripod::new(symmetric_feet(cx, cy, 650.0), [1380.0; 3]) else {
+        unreachable!("対称な三脚は必ず作れる");
+    };
+    sim.tripod = t;
+    sim
+}
+
+#[test]
+fn peek_shows_the_station_on_the_opposite_side_of_the_offset() {
+    // 脚頭が測点の奥（北）20 mm にあると、のぞいた測点は穴の手前（南）20 mm に見える
+    let s = snap(&textbook_tripod_at(0.0, 20.0));
+    assert!(!s.mounted && s.laser.is_none(), "器械を載せる前はレーザーがない");
+    let Some(p) = s.peek else {
+        unreachable!("器械を載せる前は、のぞいた見え方がある");
+    };
+    assert!(approx(p[0], -s.head_center.x, 1e-9) && approx(p[1], -s.head_center.y, 1e-9));
+    assert!(approx(p[0], 0.0, 0.5) && approx(p[1], -20.0, 0.5), "{:?}", p);
+    assert!(s.peek_visible);
+}
+
+#[test]
+fn station_is_not_seen_outside_the_head_hole_view() {
+    let near = snap(&textbook_tripod_at(HEAD_HOLE_VIEW_MM - 5.0, 0.0));
+    assert!(near.peek_visible, "見える範囲の中なら測点が見える");
+    let far = snap(&textbook_tripod_at(0.0, -(HEAD_HOLE_VIEW_MM + 5.0)));
+    assert!(far.peek.is_some() && !far.peek_visible, "見える範囲の外では測点は見えない");
+}
+
+#[test]
+fn moving_the_tripod_moves_the_station_in_the_hole() {
+    let mut sim = textbook_tripod_at(0.0, 0.0);
+    let Some(before) = snap(&sim).peek else {
+        unreachable!();
+    };
+    // 三脚ごと奥（北）へ運ぶと、測点は穴の手前へ動いて見える
+    let mut t = 0.0;
+    for _ in 0..10 {
+        t += 50.0;
+        sim.frame(
+            t,
+            &[Command::MoveFreeLegs {
+                dir: [0.0, 1.0],
+                speed: Speed::Fine,
+            }],
+        );
+    }
+    let Some(after) = snap(&sim).peek else {
+        unreachable!();
+    };
+    assert!(after[1] < before[1] - 1.0, "{:?} → {:?}", before, after);
+    assert!(approx(after[0], before[0], 0.5), "{:?} → {:?}", before, after);
+}
+
+#[test]
+fn peek_ends_when_the_instrument_is_mounted() {
+    let mut sim = textbook_tripod_at(0.0, 0.0);
+    assert!(snap(&sim).peek.is_some());
+    sim.frame(50.0, &[Command::MountInstrument]);
+    let s = snap(&sim);
+    assert!(s.mounted && s.peek.is_none() && !s.peek_visible, "器械を載せたら、のぞく見え方は終わる");
+    assert!(s.laser.is_some(), "器械を載せたらレーザーの表示に戻る");
+    // 現場モードは最初から器械が載っているので、のぞく見え方はない
+    assert!(snap(&Simulator::new(Mode::Field, 1)).peek.is_none());
 }
 
 // ---------------------------------------------------------------------------

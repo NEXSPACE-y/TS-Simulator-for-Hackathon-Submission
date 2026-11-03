@@ -178,6 +178,9 @@ fn visit(s: &Snapshot, f: &mut dyn FnMut(&'static str, &[f64])) {
         &[s.centering_mm.map(centering_display_mm).unwrap_or(f64::NAN)],
     );
     f("centeringOk", &[b(s.centering_ok)]);
+    f("peekValid", &[b(s.peek.is_some())]);
+    f("peek", &s.peek.unwrap_or([f64::NAN; 2]));
+    f("peekVisible", &[b(s.peek_visible)]);
     f("circValid", &[b(s.circular.is_some())]);
     f(
         "circOffsetMm",
@@ -607,7 +610,7 @@ pub fn command_codes_json() -> String {
 pub fn display_config_json() -> String {
     use config::*;
     format!(
-        r#"{{"centeringToleranceMm":{},"tiltToleranceSec":{},"lcdOuterRangeSec":{},"lcdInnerRatio":{},"circularInRatio":{},"circularVialMaxMm":{},"slideLimitMm":{},"sightOkSec":{},"targetHeightMm":{},"legHingeRadiusMm":{},"headTopOffsetMm":{},"tribrachPivotHeightMm":{},"screwRadiusMm":{},"screwAzimuths":[{},{},{}],"trunnionHeightMm":{}}}"#,
+        r#"{{"centeringToleranceMm":{},"tiltToleranceSec":{},"lcdOuterRangeSec":{},"lcdInnerRatio":{},"circularInRatio":{},"circularVialMaxMm":{},"slideLimitMm":{},"sightOkSec":{},"targetHeightMm":{},"legHingeRadiusMm":{},"headTopOffsetMm":{},"tribrachPivotHeightMm":{},"screwRadiusMm":{},"screwAzimuths":[{},{},{}],"trunnionHeightMm":{},"headHoleViewMm":{},"textbookRoughCenterMm":{}}}"#,
         jnum(CENTERING_TOLERANCE_MM),
         jnum(TILT_TOLERANCE_SEC),
         jnum(LCD_OUTER_RANGE_SEC),
@@ -625,6 +628,8 @@ pub fn display_config_json() -> String {
         jnum(SCREW_AZIMUTHS[1]),
         jnum(SCREW_AZIMUTHS[2]),
         jnum(TRUNNION_HEIGHT_MM),
+        jnum(HEAD_HOLE_VIEW_MM),
+        jnum(TEXTBOOK_ROUGH_CENTER_MM),
     )
 }
 

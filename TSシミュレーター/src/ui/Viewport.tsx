@@ -105,11 +105,21 @@ export function Viewport(props: { quality: Quality }) {
 /** 求心の拡大表示の倍率 [px/mm]（表示の大きさだけ） */
 const PX_PER_MM = 8;
 const ZOOM_R = 56;
+/** 脚頭の穴からのぞく表示：穴の縁の半径 [px]（見える範囲 headHoleViewMm をこの大きさで描く） */
+const HOLE_R = 52;
+/** 穴の外を暗くする形（四角から穴の丸を抜く） */
+const HOLE_MASK = `M-64 -64 H64 V64 H-64 Z M${HOLE_R} 0 A${HOLE_R} ${HOLE_R} 0 1 0 ${-HOLE_R} 0 A${HOLE_R} ${HOLE_R} 0 1 0 ${HOLE_R} 0 Z`;
 
 function ZoomPanels(props: { show: ZoomName }) {
   const { show } = props;
   const { bridge } = useSim();
   const cfg = bridge.config;
+  const peekScale = HOLE_R / cfg.headHoleViewMm;
+  const caption = useRef<HTMLElement>(null);
+  const laserView = useRef<SVGGElement>(null);
+  const peekView = useRef<SVGGElement>(null);
+  const peekMark = useRef<SVGGElement>(null);
+  const peekText = useRef<SVGTextElement>(null);
   const laser = useRef<SVGCircleElement>(null);
   const centText = useRef<SVGTextElement>(null);
   const bubble = useRef<SVGCircleElement>(null);
@@ -121,6 +131,19 @@ function ZoomPanels(props: { show: ZoomName }) {
     useCallback((f: Frame) => {
       const d = f.data;
       const o = f.o;
+      // 器械を載せる前：脚頭の穴から真下をのぞいた見え方（穴が固定で、測点が動いて見える）
+      const peeking = flag(f, o.peekValid);
+      setAttr(laserView.current, 'display', peeking ? 'none' : 'inline');
+      setAttr(peekView.current, 'display', peeking ? 'inline' : 'none');
+      setText(caption.current, peeking ? '脚頭の穴から（上＝奥）' : '求心（上＝奥）');
+      if (peeking) {
+        const seen = flag(f, o.peekVisible);
+        const px = (d[o.peek] ?? 0) * peekScale;
+        const py = -(d[o.peek + 1] ?? 0) * peekScale;
+        setAttr(peekMark.current, 'transform', `translate(${px.toFixed(2)} ${py.toFixed(2)})`);
+        setAttr(peekMark.current, 'display', seen ? 'inline' : 'none');
+        setText(peekText.current, seen ? '目標の円に入れば位置はOK' : '測点が見えない');
+      }
       // 求心：レーザー点と測点（北＝上）
       if (flag(f, o.laserValid)) {
         // 枠の外に出るときは、向きを保ったまま枠の端に置く（表示の縮尺だけ）
@@ -157,7 +180,7 @@ function ZoomPanels(props: { show: ZoomName }) {
         setText(xText.current, 'X: ---');
         setText(yText.current, 'Y: ---');
       }
-    }, []),
+    }, [peekScale]),
   );
 
   const tolR = cfg.centeringToleranceMm * PX_PER_MM;
@@ -165,18 +188,32 @@ function ZoomPanels(props: { show: ZoomName }) {
     <div className="zooms">
       {show === 'centering' && (
         <figure className="zoom">
-          <figcaption>求心（上＝奥）</figcaption>
+          <figcaption ref={caption}>求心（上＝奥）</figcaption>
           <svg viewBox="-64 -64 128 140" aria-label="レーザー求心の拡大">
-            <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
-            {[1, 2, 3, 4, 5, 6, 7].map((mm) => (
-              <circle key={mm} r={mm * PX_PER_MM} className={mm % 5 === 0 ? 'z-grid strong' : 'z-grid'} />
-            ))}
-            <circle r="12" className="z-mark" />
-            <line x1="-12" y1="0" x2="12" y2="0" className="z-cross" />
-            <line x1="0" y1="-12" x2="0" y2="12" className="z-cross" />
-            <circle r={tolR} className="z-tol" />
-            <circle ref={laser} r="2.6" className="z-laser" />
-            <text ref={centText} x="0" y="74" className="z-text" />
+            <g ref={laserView}>
+              <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
+              {[1, 2, 3, 4, 5, 6, 7].map((mm) => (
+                <circle key={mm} r={mm * PX_PER_MM} className={mm % 5 === 0 ? 'z-grid strong' : 'z-grid'} />
+              ))}
+              <circle r="12" className="z-mark" />
+              <line x1="-12" y1="0" x2="12" y2="0" className="z-cross" />
+              <line x1="0" y1="-12" x2="0" y2="12" className="z-cross" />
+              <circle r={tolR} className="z-tol" />
+              <circle ref={laser} r="2.6" className="z-laser" />
+              <text ref={centText} x="0" y="74" className="z-text" />
+            </g>
+            <g ref={peekView} display="none">
+              <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
+              <circle r={cfg.textbookRoughCenterMm * peekScale} className="z-tol" />
+              <g ref={peekMark}>
+                <circle r="5" className="z-mark" />
+                <line x1="-8" y1="0" x2="8" y2="0" className="z-cross" />
+                <line x1="0" y1="-8" x2="0" y2="8" className="z-cross" />
+              </g>
+              <path d={HOLE_MASK} className="z-hole-mask" />
+              <circle r={HOLE_R} className="z-hole-rim" />
+              <text ref={peekText} x="0" y="74" className="z-text small" />
+            </g>
           </svg>
         </figure>
       )}

@@ -389,6 +389,18 @@ input {
   stroke-width: 0.6;
 }
 
+/* 器械を載せる前：脚頭の穴からのぞいた見え方 */
+.z-hole-mask {
+  fill: #1b1d22;
+  fill-rule: evenodd;
+}
+
+.z-hole-rim {
+  fill: none;
+  stroke: #8e969f;
+  stroke-width: 2;
+}
+
 .z-text {
   fill: var(--text);
   font-size: 13px;

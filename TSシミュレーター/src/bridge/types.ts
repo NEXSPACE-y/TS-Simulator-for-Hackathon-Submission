@@ -138,4 +138,8 @@ export interface DisplayConfig {
   screwRadiusMm: number;
   screwAzimuths: [number, number, number];
   trunnionHeightMm: number;
+  /** 器械を載せる前に、脚頭の穴から測点が見える範囲（半径 mm） */
+  headHoleViewMm: number;
+  /** 教科書モード手順1：脚頭の中心と測点の距離の目標 [mm] */
+  textbookRoughCenterMm: number;
 }
