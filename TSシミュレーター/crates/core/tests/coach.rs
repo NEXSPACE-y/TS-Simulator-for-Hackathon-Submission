@@ -226,3 +226,53 @@ fn next_action_in_observation_starts_with_the_eyepiece() {
     // 観測を始めたときは、十字線がぼやけている（またはターゲットが視野から遠い）
     assert!(a.contains("接眼レンズ") || a.contains("照準器"), "{}", a);
 }
+
+// ---------------------------------------------------------------------------
+// FSの座標の計算（観測の解説）
+// ---------------------------------------------------------------------------
+
+use ts_core::survey::direction_to;
+
+fn aim_and_focus(sim: &mut Simulator, target: Vec3) {
+    let Some(eye) = sim.snapshot().trunnion else {
+        unreachable!();
+    };
+    let (az, z, _) = direction_to(eye, target);
+    sim.set_telescope(az, z);
+    let d_eyepiece = sim.obs.eye_dpt - sim.obs.eyepiece_dpt;
+    assert!(sim.turn_eyepiece(d_eyepiece).is_ok());
+    let d_focus = 1000.0 / (target - eye).norm() - sim.obs.focus_per_m;
+    assert!(sim.turn_focus(d_focus).is_ok());
+}
+
+#[test]
+fn calc_facts_show_each_step_with_the_core_numbers() {
+    let mut sim = level_sim();
+    assert!(sim.complete_setup().map(|j| j.passed).unwrap_or(false));
+    assert!(sim.start_observation().is_ok());
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN);
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    assert!(sim.ai_facts(FactKind::Calc).is_none(), "FSを観測するまでは無い");
+    let bs = sim.snapshot().bs_target;
+    aim_and_focus(&mut sim, bs);
+    assert!(sim.observe().is_ok());
+    let fs = sim.snapshot().fs_target;
+    aim_and_focus(&mut sim, fs);
+    assert!(sim.observe().is_ok());
+    let Some(facts) = sim.ai_facts(FactKind::Calc) else {
+        unreachable!("FSを観測したら計算の事実がある");
+    };
+    let Some(f) = sim.obs.fs else {
+        unreachable!();
+    };
+    // 途中の値と答えは、観測記録と同じ数字
+    let x = value(&facts, "4. X＝機械点のX＋ΔX").unwrap_or("");
+    assert!(x.ends_with(&format!("{:.3} m", f.x_mm / 1000.0)), "{}", x);
+    assert_eq!(
+        value(&facts, "5. 観測−設計"),
+        Some("X +6 mm・Y \u{2212}4 mm・H ±0 mm")
+    );
+    assert!(facts
+        .iter()
+        .all(|f| f.value.chars().count() <= 240 && f.key.chars().count() <= 40));
+}

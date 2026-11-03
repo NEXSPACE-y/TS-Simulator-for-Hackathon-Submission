@@ -4,6 +4,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
 import { dmsCircleAt, dmsSignedAt, fixed, flag } from '../bridge/format';
+import { AiExplain } from './AiExplain';
 import { DirPad, HoldButton, Section, SpeedSelector } from './controls';
 import { setText, useFrame, useSim, useUi } from './hooks';
 
@@ -255,6 +256,8 @@ function Telescope() {
           <p className="note">
             方向角 {o.fs.azimuthText}・水平距離 {o.fs.horizontalText} m
           </p>
+          {/* 測り直したら説明も聞き直せるよう、結果が変わったら作り直す */}
+          <AiExplain key={`${o.fs.xText}/${o.fs.yText}/${o.fs.hText}`} />
         </Section>
       )}
     </>

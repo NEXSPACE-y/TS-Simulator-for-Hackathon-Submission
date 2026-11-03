@@ -228,6 +228,19 @@ pub fn format_sec(ms: f64) -> String {
     }
 }
 
+/// m 表示（符号つき・小数3桁）。例：`+12.345`、`−3.210`（マイナスは「−」U+2212）
+pub fn format_signed_m(mm: f64) -> String {
+    let v = mm / 1000.0;
+    let s = format!("{:.3}", v.abs());
+    if s == "0.000" {
+        "±0.000".into()
+    } else if v > 0.0 {
+        format!("+{}", s)
+    } else {
+        format!("\u{2212}{}", s)
+    }
+}
+
 /// 手順の基準タイム [ms]（モードごと。仮）
 pub fn step_ref_ms(textbook: bool, step: u8) -> f64 {
     let refs = if textbook {
@@ -781,6 +794,13 @@ mod tests {
         assert_eq!(direction_words([0.0, -1.0]), "手前");
         assert_eq!(direction_words([-1.0, 1.0]), "左奥");
         assert_eq!(direction_words([0.1, 1.0]), "奥");
+    }
+
+    #[test]
+    fn signed_m_has_sign_and_three_decimals() {
+        assert_eq!(format_signed_m(12_345.4), "+12.345");
+        assert_eq!(format_signed_m(-3_210.0), "\u{2212}3.210");
+        assert_eq!(format_signed_m(0.0004), "±0.000");
     }
 
     #[test]

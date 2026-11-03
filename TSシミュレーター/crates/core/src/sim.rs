@@ -621,6 +621,8 @@ pub enum FactKind {
     Review,
     /// いまの状態と次の操作（何でも質問）
     Status,
+    /// FSの座標の計算（観測の解説）
+    Calc,
 }
 
 impl Simulator {
@@ -1621,7 +1623,116 @@ impl Simulator {
         match kind {
             FactKind::Review => self.review_facts(),
             FactKind::Status => Some(self.status_facts()),
+            FactKind::Calc => self.calc_facts(),
         }
+    }
+
+    /// FSの座標がどう計算されたか（途中の値もコアで出す。AIは計算しない）
+    fn calc_facts(&self) -> Option<Vec<Fact>> {
+        let fs = self.obs.fs?;
+        let bs = self.obs.bs?;
+        let st = KNOWN_POINTS.get(self.obs.station?)?;
+        let bp = KNOWN_POINTS.get(self.obs.backsight?)?;
+        let ih = self.obs.instrument_height_mm?;
+        let dx = fs.x_mm - st.x_mm;
+        let dy = fs.y_mm - st.y_mm;
+        let vertical = fs.slope_mm * fs.zenith.cos();
+        let m = format_m;
+        let sm = coach::format_signed_m;
+        Some(vec![
+            fact(
+                "座標の決まり",
+                "X＝北、Y＝東、H＝標高（単位 m）。方向角は北から時計回り",
+            ),
+            fact(
+                "機械点",
+                format!("{}（X {}・Y {}・H {}）", st.name, m(st.x_mm), m(st.y_mm), m(st.h_mm)),
+            ),
+            fact(
+                "BS点",
+                format!("{}（X {}・Y {}）", bp.name, m(bp.x_mm), m(bp.y_mm)),
+            ),
+            fact(
+                "1. BSの方向角（2点の座標から計算）",
+                format_dms_circle(bs.azimuth),
+            ),
+            fact(
+                "1. BSを視準したときの水平角の読み",
+                format_dms_circle(bs.reading),
+            ),
+            fact(
+                "1. 方向角のセット",
+                "BSを観測すると、水平角の読みがBSの方向角と同じになるように合わせる。これで以後の水平角の読み＝方向角になる",
+            ),
+            fact(
+                "1. BSの距離の確認",
+                format!(
+                    "観測した水平距離 {} m・座標から計算した距離 {} m（差 {}）",
+                    m(bs.horizontal_mm),
+                    m(bs.coord_distance_mm),
+                    format_diff_mm(bs.horizontal_mm - bs.coord_distance_mm)
+                ),
+            ),
+            fact("2. FSの方向角（観測した水平角）", format_dms_circle(fs.azimuth)),
+            fact("2. FSの天頂角", format_dms_circle(fs.zenith)),
+            fact("2. FSの斜距離", format!("{} m", m(fs.slope_mm))),
+            fact(
+                "2. 水平距離＝斜距離×sin(天頂角)",
+                format!("{} m", m(fs.horizontal_mm)),
+            ),
+            fact(
+                "2. 高低差＝斜距離×cos(天頂角)",
+                format!("{} m", sm(vertical)),
+            ),
+            fact(
+                "3. ΔX（北へ）＝水平距離×cos(方向角)",
+                format!("{} m", sm(dx)),
+            ),
+            fact(
+                "3. ΔY（東へ）＝水平距離×sin(方向角)",
+                format!("{} m", sm(dy)),
+            ),
+            fact(
+                "4. X＝機械点のX＋ΔX",
+                format!("{} ＋ ({}) ＝ {} m", m(st.x_mm), sm(dx), m(fs.x_mm)),
+            ),
+            fact(
+                "4. Y＝機械点のY＋ΔY",
+                format!("{} ＋ ({}) ＝ {} m", m(st.y_mm), sm(dy), m(fs.y_mm)),
+            ),
+            fact(
+                "4. H＝機械点のH＋器械高＋高低差−プリズム高",
+                format!(
+                    "{} ＋ {} ＋ ({}) − {} ＝ {} m",
+                    m(st.h_mm),
+                    m(ih),
+                    sm(vertical),
+                    m(TARGET_HEIGHT_MM),
+                    m(fs.h_mm)
+                ),
+            ),
+            fact("器械高（電子平板に入れた値）", format!("{} m", m(ih))),
+            fact("プリズム高", format!("{} m", m(TARGET_HEIGHT_MM))),
+            fact(
+                "5. 設計点",
+                format!(
+                    "{}（X {}・Y {}・H {}）",
+                    FS_DESIGN.name,
+                    m(FS_DESIGN.x_mm),
+                    m(FS_DESIGN.y_mm),
+                    m(FS_DESIGN.h_mm)
+                ),
+            ),
+            fact(
+                "5. 観測−設計",
+                format!(
+                    "X {}・Y {}・H {}",
+                    format_diff_mm(fs.dx_mm),
+                    format_diff_mm(fs.dy_mm),
+                    format_diff_mm(fs.dh_mm)
+                ),
+            ),
+        ])
     }
 
     /// いまの手順の名前
