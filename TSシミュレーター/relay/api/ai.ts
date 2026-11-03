@@ -367,6 +367,9 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   return json(200, { ok: true, text }, cors);
 }
 
+// Vercel は relay/ だけを Node の型定義なしで型チェックするので、使う分の型をここに書く（依存関係は増やさない）
+declare const process: { env: Record<string, string | undefined> };
+
 export default {
   fetch(request: Request): Promise<Response> {
     return handle(request, { fetch: globalThis.fetch, env: process.env, now: Date.now });
