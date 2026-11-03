@@ -186,9 +186,10 @@ impl CoachLog {
 
     fn record_segment(&mut self, step: u8, kind: LogKind, t_ms: f64, dt: f64) {
         if let Some(last) = self.segments.last_mut() {
-            // 同じ操作を続けているなら（間が0.3秒以内）、その区切りを延ばす
+            // 同じ操作を続けているなら（間が0.3秒以内）、その区切りを延ばす。
+            // 現場モードは状態で手順が変わるので、途中で手順が変わっても1件のまま（手順は始めたときのもの）
             let gap = t_ms - dt - (last.start_ms + last.dur_ms);
-            if last.step == step && last.kind == kind && gap <= 300.0 {
+            if last.kind == kind && gap <= 300.0 {
                 last.dur_ms = (t_ms - last.start_ms).max(last.dur_ms);
                 return;
             }

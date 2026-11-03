@@ -1458,6 +1458,52 @@ impl Simulator {
         }
     }
 
+    /// 手順ごとの時間・ひとこと・質問に使う「いまの手順」。
+    /// 現場モードは順番が自由で手順一覧を押さずに進められるので、据付中は状態から決める（画面の手順一覧は選んだ手順のまま）
+    fn coach_step(&self) -> u8 {
+        match (self.phase, self.mode) {
+            (Phase::Observation, _) | (_, Mode::Textbook) => self.current_step(),
+            (_, Mode::Field) => self.field_step_now(),
+        }
+    }
+
+    /// 現場モードで、次にやるべき操作が入っている手順（次の操作 field_action・finish_action と同じ順に見る）
+    fn field_step_now(&self) -> u8 {
+        match self.tripod.planted_count() {
+            0 => return 1,
+            1 => return 2,
+            2 => return 3,
+            _ => {}
+        }
+        let pose = self.inst.pose(&self.tripod.head);
+        let circular_out = pose
+            .as_ref()
+            .map(|p| !CircularBubble::from_pose(p).in_circle)
+            .unwrap_or(false);
+        let level_ok = pose
+            .as_ref()
+            .map(|p| ElectronicBubble::from_pose(p).ok)
+            .unwrap_or(false);
+        let centering_ok = pose
+            .as_ref()
+            .and_then(|p| p.laser_point())
+            .map(|l| tenths(l.x.hypot(l.y)) <= tenths(CENTERING_TOLERANCE_MM))
+            .unwrap_or(false);
+        // 1回もずらしていない間の整準は手順5、ずらした後の整準は手順7
+        let level_step = if self.any_slide { 7 } else { 5 };
+        if circular_out {
+            4
+        } else if !self.inst.clamp_tight {
+            6
+        } else if !level_ok {
+            level_step
+        } else if !centering_ok {
+            6
+        } else {
+            level_step
+        }
+    }
+
     /// 毎フレーム変わる数値
     pub fn snapshot(&self) -> Snapshot {
         let t = &self.tripod;
@@ -1797,7 +1843,7 @@ impl Simulator {
         });
         let has = |k: OpKind| self.frame_ops.contains(&k);
         let summary = FrameSummary {
-            step: self.current_step(),
+            step: self.coach_step(),
             dt_ms,
             t_ms: self.timer.elapsed(self.now_ms),
             kind,
@@ -1937,7 +1983,7 @@ impl Simulator {
         if self.now_ms - self.last_advice_ms < ADVICE_MIN_INTERVAL_MS {
             return;
         }
-        let step = self.current_step();
+        let step = self.coach_step();
         let si = (step as usize).clamp(1, 7) - 1;
         let textbook = self.mode == Mode::Textbook;
         let c = &self.coach;
@@ -2183,7 +2229,7 @@ impl Simulator {
     /// いまの状態と次の操作（何でも質問のときにAIに渡す）
     fn status_facts(&self) -> Vec<Fact> {
         let s = self.snapshot();
-        let step = self.current_step();
+        let step = self.coach_step();
         let mut f = vec![
             fact(
                 "モード",

@@ -77,19 +77,151 @@ fn turning_the_wrong_way_is_logged_and_becomes_a_detour() {
     assert!(value(&facts, "不合格の理由").is_some_and(|v| v.contains("電子気泡 Y")));
 }
 
+/// 定心桿を緩めて器械を東へ少しずらし、締める（4フレームずらす）
+fn slide_once(sim: &mut Simulator, t: &mut f64) {
+    *t += 50.0;
+    sim.frame(*t, &[Command::SetClamp { tight: false }]);
+    for _ in 0..4 {
+        *t += 50.0;
+        sim.frame(
+            *t,
+            &[Command::SlideInstrument {
+                dir: [1.0, 0.0],
+                speed: Speed::Fine,
+            }],
+        );
+    }
+    *t += 50.0;
+    sim.frame(*t, &[Command::SetClamp { tight: true }]);
+}
+
 #[test]
 fn time_is_counted_per_step() {
+    // 現場モードは手順一覧を押さなくても、状態から手順が決まる
     let mut sim = level_sim();
     let mut t = 0.0;
-    sim.frame(t, &[Command::SelectStep { step: 5 }]);
+    sim.frame(t, &[]);
+    // まだずらしていない整準 → 手順5
     turn_c_away(&mut sim, &mut t, 20);
-    sim.frame(t, &[Command::SelectStep { step: 7 }]);
+    // 定心桿を緩めてずらす → 手順6（締めたフレームから、ずらした後の整準 → 手順7）
+    slide_once(&mut sim, &mut t);
     turn_c_away(&mut sim, &mut t, 10);
     let log = sim.coach_log();
     assert!(log.step_ms[4] > 900.0 && log.step_ms[4] < 1_100.0, "手順5：{}", log.step_ms[4]);
-    assert!(log.step_ms[6] > 400.0 && log.step_ms[6] < 600.0, "手順7：{}", log.step_ms[6]);
+    assert!(log.step_ms[5] > 150.0 && log.step_ms[5] < 350.0, "手順6：{}", log.step_ms[5]);
+    assert!(log.step_ms[6] > 400.0 && log.step_ms[6] < 650.0, "手順7：{}", log.step_ms[6]);
     let steps: Vec<u8> = log.visits.iter().map(|v| v.0).collect();
-    assert_eq!(steps, vec![5, 7]);
+    assert_eq!(steps, vec![5, 6, 7]);
+}
+
+/// 何でも質問でAIに渡す「いまの手順」の番号
+fn step_in_status(sim: &Simulator) -> Option<u8> {
+    let facts = sim.ai_facts(FactKind::Status)?;
+    let v = value(&facts, "いまの手順")?;
+    v.strip_prefix("手順")?.chars().next()?.to_digit(10).map(|d| d as u8)
+}
+
+/// 画面の手順一覧で、いま選ばれている手順
+fn step_on_screen(sim: &Simulator) -> Option<u8> {
+    sim.ui_state().steps.iter().find(|s| s.current).map(|s| s.no)
+}
+
+#[test]
+fn field_step_follows_the_legs() {
+    let mut sim = Simulator::new(Mode::Field, 3);
+    sim.frame(0.0, &[]);
+    assert_eq!(step_in_status(&sim), Some(1), "1本も踏み込んでいない → 手順1");
+    sim.frame(50.0, &[Command::PressLeg { leg: 0 }]);
+    assert_eq!(step_in_status(&sim), Some(2), "1本だけ踏み込んだ → 手順2");
+    sim.frame(100.0, &[Command::PressLeg { leg: 1 }]);
+    assert_eq!(step_in_status(&sim), Some(3), "2本踏み込んだ → 手順3");
+    assert_eq!(step_on_screen(&sim), Some(1), "画面の手順一覧は選んだ手順のまま");
+}
+
+#[test]
+fn field_step_follows_the_bubbles_and_the_clamp() {
+    let mut sim = level_sim();
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    assert_eq!(step_in_status(&sim), Some(5), "両方合っていて、まだずらしていない → 手順5");
+
+    // 脚の伸縮で円形気泡を円の外へ → 手順4
+    let mut legs = level_sim();
+    let mut tl = 0.0;
+    for _ in 0..200 {
+        tl += 50.0;
+        legs.frame(
+            tl,
+            &[Command::ChangeLegLength {
+                leg: 0,
+                extend: true,
+                speed: Speed::Medium,
+            }],
+        );
+        if legs.snapshot().circular.is_some_and(|c| !c.in_circle) {
+            break;
+        }
+    }
+    assert!(legs.snapshot().circular.is_some_and(|c| !c.in_circle));
+    assert_eq!(step_in_status(&legs), Some(4), "円形気泡が円の外 → 手順4");
+
+    // 定心桿を緩めている → 手順6
+    t += 50.0;
+    sim.frame(t, &[Command::SetClamp { tight: false }]);
+    assert_eq!(step_in_status(&sim), Some(6), "定心桿を緩めている → 手順6");
+    for _ in 0..20 {
+        t += 50.0;
+        sim.frame(
+            t,
+            &[Command::SlideInstrument {
+                dir: [1.0, 0.0],
+                speed: Speed::Medium,
+            }],
+        );
+    }
+    t += 50.0;
+    sim.frame(t, &[Command::SetClamp { tight: true }]);
+
+    // ずらした後に電子気泡が外れた → 手順7
+    turn_c_away(&mut sim, &mut t, 10);
+    assert!(sim.snapshot().electronic.is_some_and(|e| !e.ok));
+    assert_eq!(step_in_status(&sim), Some(7), "ずらした後の整準 → 手順7");
+
+    // 次の操作どおりに整準して、電子気泡が合い、求心がずれたまま → 手順6
+    for _ in 0..2_000 {
+        if sim.snapshot().electronic.is_some_and(|e| e.ok) {
+            break;
+        }
+        assert_eq!(step_in_status(&sim), Some(7), "整準している間は手順7");
+        let cmds = commands_for(&sim, &sim.next_action());
+        t += 50.0;
+        sim.frame(t, &cmds);
+    }
+    let s = sim.snapshot();
+    assert!(s.electronic.is_some_and(|e| e.ok) && !s.centering_ok, "求心ズレ{:?}", s.centering_mm);
+    assert_eq!(step_in_status(&sim), Some(6), "電子気泡は合っていて求心がずれている → 手順6");
+    assert_eq!(step_on_screen(&sim), Some(1), "画面の手順一覧は選んだ手順のまま");
+}
+
+#[test]
+fn field_time_is_not_counted_to_the_selected_step() {
+    // 手順一覧を押さずに次の操作どおりに合格まで進めても、時間は手順1だけに付かない
+    for seed in [1, 3, 7] {
+        let sim = follow_hints_to_pass(Mode::Field, seed);
+        let log = sim.coach_log();
+        let total: f64 = log.step_ms.iter().sum();
+        assert!(log.step_ms[0] < total * 0.5, "seed {}：手順1に{}ms（全体{}ms）", seed, log.step_ms[0], total);
+        assert!(log.step_ms[3..].iter().sum::<f64>() > 0.0, "seed {}：整準の手順に時間が付く", seed);
+        // 脚を踏み込んだ後に、手順1〜3へ戻ることはない
+        let steps: Vec<u8> = log.visits.iter().map(|v| v.0).collect();
+        let first_level = steps.iter().position(|s| *s >= 4);
+        assert!(first_level.is_some(), "seed {}：手順の流れ {:?}", seed, steps);
+        if let Some(i) = first_level {
+            assert!(steps[i..].iter().all(|s| *s >= 4), "seed {}：手順の流れ {:?}", seed, steps);
+        }
+        let legs: Vec<u8> = steps.iter().copied().take_while(|s| *s < 4).collect();
+        assert!(legs.windows(2).all(|w| w[0] < w[1]), "seed {}：脚の手順は1→2→3の順 {:?}", seed, steps);
+    }
 }
 
 #[test]
@@ -413,7 +545,7 @@ fn commands_for(sim: &Simulator, hint: &str) -> Vec<Command> {
     }
 }
 
-fn follow_hints_to_pass(mode: Mode, seed: u64) {
+fn follow_hints_to_pass(mode: Mode, seed: u64) -> Simulator {
     let mut sim = Simulator::new(mode, seed);
     let mut t = 0.0;
     sim.frame(t, &[]);
@@ -425,7 +557,7 @@ fn follow_hints_to_pass(mode: Mode, seed: u64) {
         sim.frame(t, &cmds);
         if let Some(j) = sim.judgement() {
             assert!(j.passed, "次の操作どおりに「据付完了」を押したら合格するはず：{:?}", j.reasons);
-            return;
+            return sim;
         }
     }
     unreachable!("次の操作どおりに進めても終わらなかった（最後の操作：{}）", sim.next_action());
@@ -497,9 +629,10 @@ fn wrong_way_advice_waits_until_the_leveling_stage() {
 
 #[test]
 fn staying_long_in_a_step_brings_advice_once() {
+    // 手順一覧は手順1のまま。状態（両方合っていて、まだずらしていない）から手順5になる
     let mut sim = level_sim();
     let mut t = 0.0;
-    sim.frame(t, &[Command::SelectStep { step: 5 }]);
+    sim.frame(t, &[]);
     // 最初の操作でタイマーが動く
     sim.frame(t + 50.0, &[Command::SetClamp { tight: true }]);
     sim.frame(t + 60.0, &[Command::SetClamp { tight: false }]);
