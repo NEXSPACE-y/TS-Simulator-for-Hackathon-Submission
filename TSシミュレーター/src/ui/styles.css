@@ -1185,6 +1185,75 @@ button.big {
   }
 }
 
+/* スマホ縦向きなど高さに余裕があるとき：ページ全体は動かさず1画面に収める。
+   3Dビューをいつも見える場所に置き、操作盤はその下で、操作盤の中だけスクロールする */
+@media (max-width: 860px) and (min-height: 500px) {
+  .app,
+  .app:has(.panel.is-closed) {
+    grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  /* 操作盤をたたんだときは、空いた分を3Dビューに回す */
+  .app:has(.panel.is-closed) {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+
+  /* 上部：1行目に作品名と「画質」「最初から」、2行目にパラメーター */
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+  }
+
+  .brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .top-actions {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 6px;
+  }
+
+  .top-actions button {
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+
+  .params {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 2px 10px;
+  }
+
+  .panel {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* 望遠鏡の視野の大きさは、3Dビューの高さに合わせる */
+  .center {
+    container-type: size;
+  }
+
+  .scope-small {
+    width: min(45cqh, 42%);
+  }
+
+  .scope-medium {
+    width: min(65cqh, 60%);
+  }
+
+  .scope-large {
+    width: min(calc(100cqh - 20px), 94%);
+  }
+}
+
 /* ---------------- 診断モード（?debug のときだけ） ---------------- */
 
 .debug-log {
