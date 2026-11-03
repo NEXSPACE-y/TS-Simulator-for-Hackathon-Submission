@@ -315,6 +315,11 @@ input {
   touch-action: manipulation;
 }
 
+/* 拡大表示の出し入れ（視点の切替とは別の働きなので、少し離す） */
+.view-switch .view-toggle {
+  margin-left: 6px;
+}
+
 .zooms {
   position: absolute;
   top: 10px;

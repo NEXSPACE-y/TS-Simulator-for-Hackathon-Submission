@@ -1,4 +1,4 @@
-// 中央：3Dビュー。右上に拡大表示（求心／円形気泡／液晶、観測では望遠鏡の視野）、左下に視点切替（SPEC 4章）。
+// 中央：3Dビュー。右上に拡大表示（求心／円形気泡／液晶、観測では望遠鏡の視野）、左下に視点切替と拡大表示の出し入れ（SPEC 4章）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
@@ -21,6 +21,8 @@ export function Viewport(props: { quality: Quality }) {
   const engine = useRef<Engine | null>(null);
   const [view, setViewState] = useState<ViewName>('overview');
   const viewRef = useRef<ViewName>('overview');
+  // 拡大表示（求心・円形気泡・液晶）を出すか。スマホでは三脚が隠れるので、隠せるようにする
+  const [zoomsShown, setZoomsShown] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const changeView = useCallback((v: ViewName) => {
     viewRef.current = v;
@@ -59,7 +61,7 @@ export function Viewport(props: { quality: Quality }) {
     <div className="viewport">
       <div className="three-host" ref={host} />
       {error && <div className="view-error">{error}</div>}
-      {ui.phase !== 'observation' && <ZoomPanels />}
+      {ui.phase !== 'observation' && zoomsShown && <ZoomPanels />}
       {observing && <TelescopeOverlay ref={scope} peep={ui.observation.peepSight} />}
       <div className="view-switch" role="group" aria-label="視点切替">
         {VIEWS.map((v) => (
@@ -72,6 +74,17 @@ export function Viewport(props: { quality: Quality }) {
             {v.label}
           </button>
         ))}
+        {ui.phase !== 'observation' && (
+          <button
+            type="button"
+            className={`view-toggle ${zoomsShown ? 'is-on' : ''}`}
+            aria-pressed={zoomsShown}
+            title="求心・円形気泡・液晶の拡大表示を出す／隠す"
+            onClick={() => setZoomsShown(!zoomsShown)}
+          >
+            拡大
+          </button>
+        )}
       </div>
     </div>
   );
