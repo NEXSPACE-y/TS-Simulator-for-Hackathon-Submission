@@ -439,3 +439,124 @@ fn following_next_actions_reaches_a_pass() {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// 操作中のひとこと（きっかけと中身はコアが決める）
+// ---------------------------------------------------------------------------
+
+use ts_core::sim::AdviceKind;
+
+fn idle(sim: &mut Simulator, t: &mut f64, frames: usize) {
+    for _ in 0..frames {
+        *t += 50.0;
+        sim.frame(*t, &[]);
+    }
+}
+
+#[test]
+fn turning_the_wrong_way_brings_advice_with_the_right_way() {
+    let mut sim = level_sim();
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    // 整準の段階（円形気泡は入っている）で、ゆっくり逆向きに回し続ける
+    for _ in 0..80 {
+        t += 50.0;
+        sim.frame(
+            t,
+            &[Command::TurnScrew {
+                screw: C,
+                thumb: Thumb::Left,
+                speed: Speed::Fine,
+            }],
+        );
+    }
+    let Some(a) = sim.advice() else {
+        unreachable!("逆向きに回し続けたら、ひとことが出る");
+    };
+    assert_eq!(a.kind, AdviceKind::WrongWay);
+    let content = value(&a.facts, "ひとことの中身").unwrap_or("");
+    // Cを親指左で上げすぎた → 戻すのは親指を右へ
+    assert!(content.contains("逆") && content.contains("親指を右へ"), "{}", content);
+    assert_eq!(a.fallback, content);
+    assert!(sim.ui_state().advice.is_some());
+    // 間をあけるので、すぐには次のひとことは出ない
+    let id = a.id;
+    turn_c_away(&mut sim, &mut t, 200);
+    assert_eq!(sim.advice().map(|a| a.id), Some(id));
+}
+
+#[test]
+fn wrong_way_advice_waits_until_the_leveling_stage() {
+    // 三脚を置く前にネジを回しても、「逆向き」のひとことは出さない
+    let mut sim = Simulator::new(Mode::Field, 3);
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    turn_c_away(&mut sim, &mut t, 100);
+    assert!(sim.advice().map(|a| a.kind != AdviceKind::WrongWay).unwrap_or(true));
+}
+
+#[test]
+fn staying_long_in_a_step_brings_advice_once() {
+    let mut sim = level_sim();
+    let mut t = 0.0;
+    sim.frame(t, &[Command::SelectStep { step: 5 }]);
+    // 最初の操作でタイマーが動く
+    sim.frame(t + 50.0, &[Command::SetClamp { tight: true }]);
+    sim.frame(t + 60.0, &[Command::SetClamp { tight: false }]);
+    sim.frame(t + 70.0, &[Command::SetClamp { tight: true }]);
+    t += 70.0;
+    idle(&mut sim, &mut t, 700);
+    assert!(sim.advice().is_none(), "目安の40秒まではひとことは出ない");
+    idle(&mut sim, &mut t, 200);
+    let Some(a) = sim.advice() else {
+        unreachable!("目安を過ぎたらひとことが出る");
+    };
+    assert_eq!(a.kind, AdviceKind::OverTime);
+    assert!(value(&a.facts, "きっかけ").is_some_and(|v| v.contains("手順5")));
+    let id = a.id;
+    idle(&mut sim, &mut t, 1500);
+    assert_eq!(sim.advice().map(|a| a.id), Some(id), "同じ手順では1回だけ");
+}
+
+#[test]
+fn sliding_before_leveling_brings_advice() {
+    let mut sim = level_sim();
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    // 電子気泡を大きく崩す（逆向きのひとことが出ないよう、短く速く）
+    for _ in 0..40 {
+        t += 50.0;
+        sim.frame(
+            t,
+            &[Command::TurnScrew {
+                screw: C,
+                thumb: Thumb::Left,
+                speed: Speed::Coarse,
+            }],
+        );
+    }
+    let first = sim.advice().map(|a| a.id);
+    t += 31_000.0;
+    sim.frame(t, &[Command::SetClamp { tight: false }]);
+    t += 50.0;
+    sim.frame(
+        t,
+        &[Command::SlideInstrument {
+            dir: [1.0, 0.0],
+            speed: Speed::Fine,
+        }],
+    );
+    t += 50.0;
+    sim.frame(
+        t,
+        &[Command::SlideInstrument {
+            dir: [1.0, 0.0],
+            speed: Speed::Fine,
+        }],
+    );
+    let Some(a) = sim.advice() else {
+        unreachable!();
+    };
+    assert_ne!(Some(a.id), first);
+    assert_eq!(a.kind, AdviceKind::SlideBeforeLevel);
+}

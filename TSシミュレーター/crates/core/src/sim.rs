@@ -596,6 +596,38 @@ pub struct UiState {
     pub loops: u32,
     pub judgement: Option<JudgementView>,
     pub observation: ObservationView,
+    /// 操作中のひとこと（AI先輩）。AIが使えないときは fallback をそのまま出す
+    pub advice: Option<AdviceView>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AdviceView {
+    pub id: u32,
+    pub fallback: String,
+}
+
+/// 操作中のひとことを出すきっかけ（コアが判定する）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdviceKind {
+    /// 手順の目安の時間を過ぎた
+    OverTime,
+    /// 整準ネジを、目標が悪くなる向きに回し続けている
+    WrongWay,
+    /// 整準ネジを回しきった
+    ScrewLimit,
+    /// ループが多い
+    ManyLoops,
+    /// 電子気泡が大きくずれたまま、器械をずらし始めた
+    SlideBeforeLevel,
+}
+
+/// 操作中のひとこと（きっかけが出た時点の事実を、そのまま持っておく）
+#[derive(Clone, Debug, PartialEq)]
+pub struct AdviceEvent {
+    pub id: u32,
+    pub kind: AdviceKind,
+    pub facts: Vec<Fact>,
+    pub fallback: String,
 }
 
 /// 変化を検出するための署名（これが変わったら ui_revision を上げる）
@@ -612,6 +644,7 @@ struct UiSignature {
     obs_rev: u32,
     goal_ok: bool,
     loops: u32,
+    advice_id: u32,
 }
 
 pub struct Simulator {
@@ -645,6 +678,15 @@ pub struct Simulator {
     frame_screws: [bool; 3],
     frame_refusals: Vec<Refusal>,
     instruction_seq: u32,
+    /// 操作中のひとこと
+    advice: Option<AdviceEvent>,
+    advice_seq: u32,
+    last_advice_ms: f64,
+    last_wrong_way_ms: f64,
+    advised_overtime: [bool; 7],
+    advised_loops: bool,
+    advised_screw_limit: bool,
+    advised_slide_before_level: bool,
 }
 
 /// AI先輩に渡す事実の種類
@@ -658,6 +700,8 @@ pub enum FactKind {
     Calc,
     /// 現場の指示（聞き取りの練習）
     Instruction,
+    /// 操作中のひとこと（きっかけが出た時点の事実）
+    Advice,
 }
 
 impl Simulator {
@@ -717,6 +761,14 @@ impl Simulator {
             frame_screws: [false; 3],
             frame_refusals: Vec::with_capacity(4),
             instruction_seq: 0,
+            advice: None,
+            advice_seq: 0,
+            last_advice_ms: f64::NEG_INFINITY,
+            last_wrong_way_ms: f64::NEG_INFINITY,
+            advised_overtime: [false; 7],
+            advised_loops: false,
+            advised_screw_limit: false,
+            advised_slide_before_level: false,
         };
         sim.ui_sig = sim.signature();
         sim
@@ -769,6 +821,10 @@ impl Simulator {
         self.last_frame_ms = Some(now);
         let dt = dt_ms / 1000.0;
         let before = self.coach_objective();
+        let counts = (
+            self.coach.screw_limit_hits,
+            self.coach.slide_before_level,
+        );
         self.frame_ops.clear();
         self.frame_screws = [false; 3];
         self.frame_refusals.clear();
@@ -777,7 +833,7 @@ impl Simulator {
             self.apply(*c, dt);
         }
         self.recording = false;
-        self.update_coach(dt_ms, before);
+        self.update_coach(dt_ms, before, counts);
         self.refresh_revision();
     }
 
@@ -1552,6 +1608,10 @@ impl Simulator {
             loops: self.loops,
             judgement: self.judgement.as_ref().map(judgement_view),
             observation: self.observation_view(),
+            advice: self.advice.as_ref().map(|a| AdviceView {
+                id: a.id,
+                fallback: a.fallback.clone(),
+            }),
         }
     }
 
@@ -1648,7 +1708,7 @@ impl Simulator {
     }
 
     /// このフレームの操作を記録する（据付中でタイマーが動いている間だけ）
-    fn update_coach(&mut self, dt_ms: f64, before: Option<(f64, f64)>) {
+    fn update_coach(&mut self, dt_ms: f64, before: Option<(f64, f64)>, counts: (u32, u32)) {
         if self.phase != Phase::Setup || !self.timer.running() {
             return;
         }
@@ -1683,6 +1743,7 @@ impl Simulator {
             clamp_refused: self.frame_refusals.contains(&Refusal::ClampTight),
         };
         self.coach.account(&summary);
+        self.check_advice(counts);
     }
 
     /// AI先輩に渡す事実（まだ出せないときは None）
@@ -1692,7 +1753,135 @@ impl Simulator {
             FactKind::Status => Some(self.status_facts()),
             FactKind::Calc => self.calc_facts(),
             FactKind::Instruction => self.instruction_facts(),
+            FactKind::Advice => self.advice.as_ref().map(|a| a.facts.clone()),
         }
+    }
+
+    /// いまの操作中のひとこと（テスト・確認用）
+    pub fn advice(&self) -> Option<&AdviceEvent> {
+        self.advice.as_ref()
+    }
+
+    /// 整準ネジで合わせる段階か（教科書モードは手順3・5・7、現場モードは3本とも踏み込んだあと）
+    fn screw_stage(&self) -> bool {
+        match self.mode {
+            Mode::Textbook => matches!(self.guided_step, 3 | 5 | 7),
+            Mode::Field => self.tripod.planted.iter().all(|p| *p),
+        }
+    }
+
+    /// 操作中のひとことを出すか決める（据付中、毎フレーム）。間をあけ、同じきっかけは繰り返さない
+    fn check_advice(&mut self, counts: (u32, u32)) {
+        if self.now_ms - self.last_advice_ms < ADVICE_MIN_INTERVAL_MS {
+            return;
+        }
+        let step = self.current_step();
+        let si = (step as usize).clamp(1, 7) - 1;
+        let textbook = self.mode == Mode::Textbook;
+        let c = &self.coach;
+        let kind = if c.slide_before_level > counts.1 && !self.advised_slide_before_level {
+            AdviceKind::SlideBeforeLevel
+        } else if c.screw_limit_hits > counts.0 && !self.advised_screw_limit {
+            AdviceKind::ScrewLimit
+        } else if c.wrong_run_ms >= WRONG_WAY_ADVICE_MS
+            && self.now_ms - self.last_wrong_way_ms >= WRONG_WAY_REPEAT_MS
+            && self.screw_stage()
+        {
+            AdviceKind::WrongWay
+        } else if self.loops >= ADVICE_LOOPS && !self.advised_loops {
+            AdviceKind::ManyLoops
+        } else if !self.advised_overtime[si] && c.step_ms[si] > coach::step_ref_ms(textbook, step) {
+            AdviceKind::OverTime
+        } else {
+            return;
+        };
+        match kind {
+            AdviceKind::SlideBeforeLevel => self.advised_slide_before_level = true,
+            AdviceKind::ScrewLimit => self.advised_screw_limit = true,
+            AdviceKind::WrongWay => self.last_wrong_way_ms = self.now_ms,
+            AdviceKind::ManyLoops => self.advised_loops = true,
+            AdviceKind::OverTime => self.advised_overtime[si] = true,
+        }
+        let next = self.next_action();
+        let c = &self.coach;
+        let trigger = match kind {
+            AdviceKind::OverTime => format!(
+                "手順{}「{}」が目安の{}を過ぎた（いま{}）",
+                step,
+                self.step_label(step),
+                coach::format_sec(coach::step_ref_ms(textbook, step)),
+                coach::format_sec(c.step_ms[si])
+            ),
+            AdviceKind::WrongWay if textbook && self.guided_step == 3 => format!(
+                "整準ネジを、レーザー点が測点から離れる向きに{}続けて回している",
+                coach::format_sec(c.wrong_run_ms)
+            ),
+            AdviceKind::WrongWay => format!(
+                "整準ネジを、電子気泡が悪くなる向きに{}続けて回している",
+                coach::format_sec(c.wrong_run_ms)
+            ),
+            AdviceKind::ScrewLimit => "整準ネジを、いっぱいまで回しきった".into(),
+            AdviceKind::ManyLoops => format!("ループ（6⇄7）が{}回になった", self.loops),
+            AdviceKind::SlideBeforeLevel => format!(
+                "電子気泡が±{:.0}″より大きくずれたまま、器械をずらし始めた",
+                SLIDE_BEFORE_LEVEL_SEC
+            ),
+        };
+        // ひとことの中身もコアが決める（AIは言い方を整えるだけ。AIが使えないときはこのまま出す）
+        let content = match kind {
+            AdviceKind::OverTime => format!("次は、{}", next),
+            AdviceKind::WrongWay => {
+                // 回しているネジの向きの話なので、整準ネジの回し方をそのまま言う
+                let screw = if textbook && self.guided_step == 3 {
+                    coach::screw_center_hint(&self.inst, &self.tripod.head)
+                } else {
+                    coach::level_hint(&self.inst, &self.tripod.head)
+                };
+                format!("回している向きが逆。{}", screw.unwrap_or_else(|| next.clone()))
+            }
+            AdviceKind::ScrewLimit => {
+                "整準ネジだけでは直しきれない傾き。ネジを真ん中あたりへ戻して、先に脚の伸縮で円形気泡を合わせる"
+                    .to_string()
+            }
+            AdviceKind::ManyLoops => format!(
+                "ずらす量は小さくして、ずらしたら定心桿を締めてから整準する。次は、{}",
+                next
+            ),
+            AdviceKind::SlideBeforeLevel => format!(
+                "器械をずらすのは、整準ネジで電子気泡を合わせてから。次は、{}",
+                next
+            ),
+        };
+        let s = self.snapshot();
+        let facts = vec![
+            fact("きっかけ", trigger),
+            fact(
+                "いまの手順",
+                format!("手順{}「{}」", step, self.step_label(step)),
+            ),
+            fact(
+                "求心ズレ",
+                s.centering_mm
+                    .map(|c| format!("{:.1} mm", centering_display_mm(c)))
+                    .unwrap_or_else(|| "---".into()),
+            ),
+            fact(
+                "電子気泡",
+                s.electronic
+                    .map(|e| format!("X {}・Y {}", format_dms_signed(e.x), format_dms_signed(e.y)))
+                    .unwrap_or_else(|| "---".into()),
+            ),
+            fact("次の操作", next),
+            fact("ひとことの中身", content.clone()),
+        ];
+        self.advice_seq += 1;
+        self.last_advice_ms = self.now_ms;
+        self.advice = Some(AdviceEvent {
+            id: self.advice_seq,
+            kind,
+            facts,
+            fallback: content,
+        });
     }
 
     /// 現場の指示（言い回しはAIに任せ、点名はコアが決める）
@@ -2187,6 +2376,7 @@ impl Simulator {
             obs_rev: self.obs_rev,
             goal_ok,
             loops: self.loops,
+            advice_id: self.advice.as_ref().map(|a| a.id).unwrap_or(0),
         }
     }
 

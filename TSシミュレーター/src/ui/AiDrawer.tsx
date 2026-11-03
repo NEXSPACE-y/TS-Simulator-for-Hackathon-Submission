@@ -8,7 +8,7 @@ import { useSim } from './hooks';
 const EXAMPLES = ['次は何をすればいい？', '求心ってなに？', 'なんで6と7を繰り返すの？'] as const;
 const MAX_QUESTION = 200;
 
-export function AiDrawer(props: { onClose: () => void }) {
+export function AiDrawer(props: { onClose: () => void; adviceOn: boolean; onAdvice: (on: boolean) => void }) {
   const { bridge } = useSim();
   const { state, run } = useSenpai();
   const [question, setQuestion] = useState('');
@@ -64,6 +64,10 @@ export function AiDrawer(props: { onClose: () => void }) {
         </button>
       </form>
       <SenpaiAnswer state={state} />
+      <label className="ai-switch">
+        <input type="checkbox" checked={props.adviceOn} onChange={(e) => props.onAdvice(e.target.checked)} />
+        <span>操作中のひとこと（据付の途中で、つまずいたときにAI先輩が声をかける）</span>
+      </label>
     </aside>
   );
 }

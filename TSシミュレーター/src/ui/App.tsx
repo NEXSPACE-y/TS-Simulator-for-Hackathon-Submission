@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ModeId, type Bridge } from '../bridge';
 import type { Quality } from '../render/engine';
+import { AdviceBubble } from './AdviceBubble';
 import { AiDrawer } from './AiDrawer';
 import { DebugLog, isDebugMode } from './DebugLog';
 import { SimContext, useUi } from './hooks';
@@ -16,6 +17,24 @@ import { TopBar } from './TopBar';
 import { Viewport } from './Viewport';
 
 const QUALITY_KEY = 'ts-sim-quality';
+const ADVICE_KEY = 'ts-sim-advice';
+
+/** 操作中のひとこと（AI先輩）を出すか。最初は出す */
+function loadAdvice(): boolean {
+  try {
+    return window.localStorage.getItem(ADVICE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function saveAdvice(on: boolean): void {
+  try {
+    window.localStorage.setItem(ADVICE_KEY, on ? 'on' : 'off');
+  } catch {
+    // 保存できなくても動作には関係ない
+  }
+}
 
 function loadQuality(): Quality {
   try {
@@ -99,6 +118,7 @@ export function App(props: { bridge: Bridge }) {
 function Simulator(props: { quality: Quality; onQuality: () => void; onRestart: () => void }) {
   const ui = useUi();
   const [aiOpen, setAiOpen] = useState(false);
+  const [adviceOn, setAdviceOn] = useState(loadAdvice);
   return (
     <div className={`app phase-${ui.phase}`}>
       <TopBar
@@ -111,10 +131,20 @@ function Simulator(props: { quality: Quality; onQuality: () => void; onRestart: 
       <StepList />
       <main className="center">
         <Viewport quality={props.quality} />
+        <AdviceBubble enabled={adviceOn} />
       </main>
       <OperationPanel />
       <ResultModal onRestart={props.onRestart} />
-      {aiOpen && <AiDrawer onClose={() => setAiOpen(false)} />}
+      {aiOpen && (
+        <AiDrawer
+          onClose={() => setAiOpen(false)}
+          adviceOn={adviceOn}
+          onAdvice={(on) => {
+            setAdviceOn(on);
+            saveAdvice(on);
+          }}
+        />
+      )}
       <Toast />
     </div>
   );

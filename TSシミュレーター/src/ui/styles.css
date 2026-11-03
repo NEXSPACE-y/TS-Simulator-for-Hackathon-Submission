@@ -1077,6 +1077,47 @@ button.complete {
   padding-left: 18px;
 }
 
+.ai-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ai-switch input {
+  margin-top: 3px;
+}
+
+.advice-bubble {
+  position: absolute;
+  bottom: 56px;
+  left: 10px;
+  width: min(340px, calc(100% - 20px));
+  z-index: 4;
+  padding: 8px 12px 10px;
+  background: rgba(26, 31, 38, 0.94);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.advice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.advice-head button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 .ai-drawer {
   position: fixed;
   top: 64px;

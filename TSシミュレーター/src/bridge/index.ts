@@ -97,8 +97,8 @@ export type UiListener = (u: UiState) => void;
 export type HoldProvider = () => ReadonlyArray<readonly [CommandName, number, number, number]>;
 
 /** AI先輩に渡す事実の種類（コアの番号）。review＝据付の講評、status＝いまの状態と次の操作、calc＝FS座標の計算、
- *  instruction＝現場の指示 */
-const AI_FACT_CODES = { review: 1, status: 2, calc: 3, instruction: 4 } as const;
+ *  instruction＝現場の指示、advice＝操作中のひとこと */
+const AI_FACT_CODES = { review: 1, status: 2, calc: 3, instruction: 4, advice: 5 } as const;
 export type AiFactKind = keyof typeof AI_FACT_CODES;
 
 /** 0＝教科書モード、1＝現場モード */

@@ -110,6 +110,8 @@ export interface UiState {
   loops: number;
   judgement: JudgementView | null;
   observation: ObservationView;
+  /** 操作中のひとこと（AI先輩）。id はきっかけが出るたびに変わる。fallback＝AIが使えないときの言い方 */
+  advice: { id: number; fallback: string } | null;
 }
 
 /** AI先輩に渡す事実1件（コアが作る見出しと値。AIには、これを言葉にさせるだけ） */

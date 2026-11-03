@@ -4,7 +4,7 @@
 //! AI（中継）には、ここで作った事実を言葉にさせるだけにする。
 //! 基準タイムなどの目安は config.rs にまとめる（値はすべて仮）。
 
-use crate::angle::to_arcsec;
+use crate::angle::{format_dms_signed, to_arcsec};
 use crate::config::{
     CENTERING_TOLERANCE_MM, FIELD_STEP_REF_SEC, LEG_LENGTH_MAX_MM, LEG_LENGTH_MIN_MM, OP_LOG_MAX,
     REVIEW_LOOPS_REF, REVIEW_WRONG_WAY_SEC, SLIDE_BEFORE_LEVEL_SEC, STEP_VISITS_MAX,
@@ -616,18 +616,20 @@ fn best_screw_move<'a>(
 pub fn level_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
     let (x, y) = inst.pose(head)?.tilt_xy();
     let (xs, ys) = (to_arcsec(x), to_arcsec(y));
-    let (moves, axis, name, v): (&[ScrewMove], usize, &str, f64) = if xs.abs() >= ys.abs() {
-        (&LEVEL_X, 0, "X", xs)
+    let (moves, axis, name): (&[ScrewMove], usize, &str) = if xs.abs() >= ys.abs() {
+        (&LEVEL_X, 0, "X")
     } else {
-        (&LEVEL_Y, 1, "Y", ys)
+        (&LEVEL_Y, 1, "Y")
     };
     let m = best_screw_move(inst, head, moves, |p| {
         let (a, b) = p.tilt_xy();
         Some(to_arcsec(if axis == 0 { a } else { b }).abs())
     })?;
     Some(format!(
-        "{}（電子気泡の{}がいま{:+.0}″。0に近づける）",
-        m.text, name, v
+        "{}（電子気泡の{}がいま{}。0に近づける）",
+        m.text,
+        name,
+        format_dms_signed(if axis == 0 { x } else { y })
     ))
 }
 
