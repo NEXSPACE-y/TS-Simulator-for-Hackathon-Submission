@@ -10,6 +10,7 @@ use ts_core::angle::{arcsec, Dms};
 use ts_core::config;
 use ts_core::instrument::Thumb;
 use ts_core::coach::Fact;
+use ts_core::Lang;
 use ts_core::sim::{
     centering_display_mm, time_parts, Command, FactKind, Mode, NoticeKind, Phase, Simulator,
     Snapshot, Speed, UiState,
@@ -460,6 +461,10 @@ fn ui_json(u: &UiState) -> String {
         instruction,
         instruction_result
     );
+    let lang = match u.lang {
+        Lang::Ja => "ja",
+        Lang::En => "en",
+    };
     let mode = match u.mode {
         Mode::Textbook => "textbook",
         Mode::Field => "field",
@@ -488,7 +493,8 @@ fn ui_json(u: &UiState) -> String {
         })
         .unwrap_or_else(|| "null".into());
     format!(
-        r#"{{"mode":"{}","phase":"{}","currentStep":{},"steps":[{}],"goal":{},"notice":{},"planted":[{},{},{}],"mounted":{},"clampTight":{},"loops":{},"judgement":{},"observation":{},"advice":{},"navi":{}}}"#,
+        r#"{{"lang":"{}","mode":"{}","phase":"{}","currentStep":{},"steps":[{}],"goal":{},"notice":{},"planted":[{},{},{}],"mounted":{},"clampTight":{},"loops":{},"judgement":{},"observation":{},"advice":{},"navi":{}}}"#,
+        lang,
         mode,
         phase,
         u.current_step,
@@ -550,6 +556,13 @@ impl Sim {
         let out = &mut self.out;
         visit(&snap, &mut |_, v| out.extend_from_slice(v));
         self.out.clone()
+    }
+
+    /// 画面に出す文の言語：0＝日本語、1＝英語
+    #[wasm_bindgen(js_name = setLang)]
+    pub fn set_lang(&mut self, lang: u32) {
+        self.inner
+            .set_lang(if lang == 1 { Lang::En } else { Lang::Ja });
     }
 
     #[wasm_bindgen(js_name = uiRevision)]

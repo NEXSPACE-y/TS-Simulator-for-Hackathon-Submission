@@ -7,7 +7,7 @@ use ts_core::instrument::Instrument;
 use ts_core::math::Vec3;
 use ts_core::sim::FactKind;
 use ts_core::tripod::Tripod;
-use ts_core::{Command, Mode, Simulator, Speed, Thumb};
+use ts_core::{Command, Lang, Mode, Simulator, Speed, Thumb};
 
 const C: usize = 2;
 
@@ -290,7 +290,7 @@ fn level_hint_follows_the_left_thumb_rule() {
     let mut inst = Instrument::default();
     assert!(inst.turn_screw(0, Thumb::Right, 0.05).is_ok());
     assert!(inst.turn_screw(1, Thumb::Left, 0.05).is_ok());
-    let Some(h) = level_hint(&inst, &level_head()) else {
+    let Some(h) = level_hint(Lang::Ja, &inst, &level_head()) else {
         unreachable!("傾いているので次の操作がある");
     };
     assert!(h.contains("A・Bを同時に外側へ"), "{}", h);
@@ -302,7 +302,7 @@ fn level_hint_uses_screw_c_for_y() {
     // Cを上げる（親指を左）と＋Y。戻すには親指を右へ
     let mut inst = Instrument::default();
     assert!(inst.turn_screw(2, Thumb::Left, 0.05).is_ok());
-    let Some(h) = level_hint(&inst, &level_head()) else {
+    let Some(h) = level_hint(Lang::Ja, &inst, &level_head()) else {
         unreachable!();
     };
     assert!(h.contains("整準ネジCを、親指を右へ"), "{}", h);
@@ -311,10 +311,10 @@ fn level_hint_uses_screw_c_for_y() {
 #[test]
 fn slide_hint_points_back_to_the_station() {
     // レーザー点が測点の右（東）2 mm にある → 器械を左へずらす
-    let h = slide_hint([2.0, 0.0], true);
+    let h = slide_hint(Lang::Ja, [2.0, 0.0], true);
     assert!(h.contains("定心桿を緩めて"), "{}", h);
     assert!(h.contains("左へ約2.0 mm"), "{}", h);
-    let h = slide_hint([0.0, -1.5], false);
+    let h = slide_hint(Lang::Ja, [0.0, -1.5], false);
     assert!(h.contains("奥へ約1.5 mm"), "{}", h);
 }
 
@@ -771,4 +771,132 @@ fn textbook_navi_follows_the_whole_setup() {
     assert!(seen.iter().any(|(k, _)| *k == NaviKind::Action));
     // 読みすぎない（1手順あたり平均10件まで）
     assert!(seen.len() <= 70, "ナビが多すぎる：{}件", seen.len());
+}
+
+// ---------------------------------------------------------------------------
+// 英語の表示：画面に出る文に日本語が混ざらない（AIに渡す事実は日本語のまま）
+// ---------------------------------------------------------------------------
+
+fn has_japanese(s: &str) -> bool {
+    s.chars().any(|c| {
+        matches!(c, '\u{3000}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}' | '\u{ff01}'..='\u{ff60}')
+    })
+}
+
+/// 画面に出る文（手順・目標・知らせ・判定・観測・ひとこと・ナビ・次の操作）
+fn screen_texts(sim: &Simulator) -> Vec<String> {
+    let ui = sim.ui_state();
+    let mut out = vec![sim.next_action()];
+    for s in &ui.steps {
+        out.push(s.label.to_string());
+        out.push(s.short.to_string());
+    }
+    out.extend(ui.goal.map(|g| g.text));
+    out.extend(ui.notice.map(|n| n.text));
+    if let Some(j) = ui.judgement {
+        out.extend(j.reasons);
+        out.extend([j.time_text, j.centering_text, j.tilt_x_text, j.tilt_y_text]);
+        out.extend(j.rating_text);
+    }
+    out.extend(ui.observation.height_text);
+    out.extend(ui.observation.instruction.map(|i| i.fallback));
+    if let Some(r) = ui.observation.instruction_result {
+        out.extend(r.items);
+    }
+    out.extend(ui.advice.map(|a| a.fallback));
+    if let Some(n) = ui.navi {
+        out.extend([n.text, n.speech]);
+    }
+    out
+}
+
+fn assert_english(sim: &Simulator, what: &str) {
+    for s in screen_texts(sim) {
+        assert!(!has_japanese(&s), "{}：{}", what, s);
+    }
+}
+
+#[test]
+fn english_screen_has_no_japanese_through_a_whole_run() {
+    for mode in [Mode::Field, Mode::Textbook] {
+        for seed in [1, 3, 7] {
+            // 同じ初期状態の日本語と英語を、同じ操作で並べて進める（操作は日本語の次の操作から作る）
+            let mut ja = Simulator::new(mode, seed);
+            let mut en = Simulator::new(mode, seed);
+            en.set_lang(Lang::En);
+            let mut t = 0.0;
+            ja.frame(t, &[]);
+            en.frame(t, &[]);
+            let mut passed = false;
+            for _ in 0..40_000 {
+                assert_english(&en, &format!("{:?} seed {} 据付中", mode, seed));
+                let cmds = commands_for(&ja, &ja.next_action());
+                assert!(!cmds.is_empty(), "操作に直せない次の操作：{}", ja.next_action());
+                t += 50.0;
+                ja.frame(t, &cmds);
+                en.frame(t, &cmds);
+                if let Some(j) = en.judgement() {
+                    passed = j.passed;
+                    break;
+                }
+            }
+            assert!(passed, "{:?} seed {}：英語でも同じ操作で合格する", mode, seed);
+            assert_english(&en, "結果画面");
+            assert_eq!(en.snapshot().centering_mm, ja.snapshot().centering_mm, "言語で動きは変わらない");
+
+            // 観測：指示 → 機械点・BSのセット → BS → FS
+            assert!(en.start_observation().is_ok());
+            assert_english(&en, "観測の始め");
+            t += 50.0;
+            en.frame(t, &[Command::RequestInstruction]);
+            assert_english(&en, "指示");
+            let ih = en.snapshot().instrument_height_mm.unwrap_or(f64::NAN).round();
+            assert!(en.set_station(1, 0, ih).is_ok());
+            assert_english(&en, "セットのあと");
+            let bs = en.snapshot().bs_target;
+            aim_and_focus(&mut en, bs);
+            assert!(en.observe().is_ok());
+            assert_english(&en, "BSのあと");
+            let fs = en.snapshot().fs_target;
+            aim_and_focus(&mut en, fs);
+            assert!(en.observe().is_ok());
+            assert_english(&en, "FSのあと");
+        }
+    }
+}
+
+#[test]
+fn english_refusals_failures_and_advice_have_no_japanese() {
+    // すぐ「据付完了」を押した不合格の理由
+    let mut sim = Simulator::new(Mode::Field, 5);
+    sim.set_lang(Lang::En);
+    sim.frame(0.0, &[]);
+    sim.frame(50.0, &[Command::CompleteSetup]);
+    let reasons = sim.ui_state().judgement.map(|j| j.reasons).unwrap_or_default();
+    assert!(!reasons.is_empty());
+    assert_english(&sim, "不合格の理由");
+
+    // 教科書モードで手順を飛ばそうとした（断る理由）・手順外の操作（注意）
+    let mut sim = Simulator::new(Mode::Textbook, 2);
+    sim.set_lang(Lang::En);
+    sim.frame(0.0, &[Command::SelectStep { step: 5 }]);
+    assert!(sim.ui_state().notice.is_some());
+    assert_english(&sim, "断る理由");
+    sim.frame(50.0, &[Command::MountInstrument]);
+    assert_english(&sim, "手順外の注意");
+
+    // 操作中のひとこと（逆向きに回し続けた）
+    let mut sim = level_sim();
+    sim.set_lang(Lang::En);
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    turn_c_away(&mut sim, &mut t, 80);
+    assert!(sim.ui_state().advice.is_some(), "ひとことが出る");
+    assert_english(&sim, "ひとこと");
+
+    // 器械を載せる前に「据付完了」
+    let mut sim = Simulator::new(Mode::Textbook, 2);
+    sim.set_lang(Lang::En);
+    sim.frame(0.0, &[Command::CompleteSetup]);
+    assert_english(&sim, "器械なしの判定");
 }

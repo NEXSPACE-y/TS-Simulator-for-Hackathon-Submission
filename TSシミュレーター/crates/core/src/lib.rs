@@ -3,6 +3,8 @@
 //! 状態・物理・判定・観測の計算・タイマーをすべてここに置く（SPEC 2章）。
 //! WASM・Tauri・ブラウザには依存しない純粋なRust。panicさせない。
 
+#[macro_use]
+pub mod i18n;
 pub mod angle;
 pub mod coach;
 pub mod config;
@@ -14,5 +16,6 @@ pub mod steps;
 pub mod survey;
 pub mod tripod;
 
+pub use i18n::Lang;
 pub use instrument::Thumb;
 pub use sim::{Command, Mode, Phase, Simulator, Snapshot, Speed, UiState};

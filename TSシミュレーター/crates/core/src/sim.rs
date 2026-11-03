@@ -8,6 +8,7 @@ use core::f64::consts::PI;
 use crate::angle::{arcsec, format_dms_circle, format_dms_signed, round_arcsec, to_arcsec};
 use crate::coach::{self, fact, CoachLog, Fact, FrameSummary, LogKind, LoopRecord, ReviewInput};
 use crate::config::*;
+use crate::i18n::{pick, Lang};
 use crate::instrument::{
     tilt_within_tolerance, CircularBubble, ElectronicBubble, Instrument, InstrumentError,
     InstrumentPose, Thumb,
@@ -164,7 +165,10 @@ pub enum Refusal {
 }
 
 impl Refusal {
-    pub fn message(&self) -> String {
+    pub fn message(&self, lang: Lang) -> String {
+        if lang == Lang::En {
+            return self.message_en();
+        }
         match self {
             Refusal::NotInSetup => "いまは据付の操作はできません。".into(),
             Refusal::NotInObservation => "観測は据付が合格してから行います。".into(),
@@ -202,6 +206,50 @@ impl Refusal {
             }
             Refusal::OutOfFocus => {
                 "ピントが合っていません。合焦つまみを回して、ターゲットをくっきりさせてください。".into()
+            }
+        }
+    }
+
+    fn message_en(&self) -> String {
+        match self {
+            Refusal::NotInSetup => "Setup operations are not available now.".into(),
+            Refusal::NotInObservation => "Observation starts after the setup passes.".into(),
+            Refusal::AllLegsPlanted => "All three legs are pressed in, so the legs cannot be moved.".into(),
+            Refusal::LegAlreadyPlanted => "That leg is already pressed in.".into(),
+            Refusal::LegLengthLimit => "The leg cannot be extended or shortened any further.".into(),
+            Refusal::TripodShape => {
+                "The tripod cannot take that shape (a leg cannot reach, or it would open too wide).".into()
+            }
+            Refusal::NotMounted => "The instrument is not mounted yet.".into(),
+            Refusal::AlreadyMounted => "The instrument is already mounted.".into(),
+            Refusal::ClampTight => "The mounting screw is tight, so the instrument cannot slide.".into(),
+            Refusal::ScrewLimit => "The leveling screw is at the end of its travel.".into(),
+            Refusal::SlideLimit => "The instrument cannot slide any further on the tripod head.".into(),
+            Refusal::BadIndex => "That operation is not available.".into(),
+            Refusal::StepLocked => "That step cannot be selected yet.".into(),
+            Refusal::TextbookOrder => "In Textbook mode, the steps go in order.".into(),
+            Refusal::GoalNotMet => "The goal of this step is not met yet.".into(),
+            Refusal::NotPassed => "The setup has not passed.".into(),
+            Refusal::NoJudgement => "Press \"Finish setup\" first.".into(),
+            Refusal::SameStationAndBacksight => "The station and the backsight cannot be the same point.".into(),
+            Refusal::HeightOutOfRange => "The instrument height is out of range.".into(),
+            Refusal::StationNotSet => "Set the station and backsight on the tablet first.".into(),
+            Refusal::BacksightNotObserved => "Measure the backsight first.".into(),
+            Refusal::UseTabletForStep8 => "Step 8 is done with \"Set\" on the tablet.".into(),
+            Refusal::SightOff { dh_sec, dv_sec } => format!(
+                "The sight is off (horizontal {}, vertical {}; bring both within {:.0}″).",
+                format_dms_signed(arcsec(*dh_sec)),
+                format_dms_signed(arcsec(*dv_sec)),
+                SIGHT_OK_SEC
+            ),
+            Refusal::PeepSight => {
+                "You cannot measure with the peep sight. Switch to the telescope and look through it.".into()
+            }
+            Refusal::ReticleBlurry => {
+                "The crosshair is blurry. Turn the eyepiece until the crosshair is sharp.".into()
+            }
+            Refusal::OutOfFocus => {
+                "The target is out of focus. Turn the focus knob until the target is sharp.".into()
             }
         }
     }
@@ -256,6 +304,7 @@ pub struct SetupJudgement {
 
 /// 据付の合否判定（SPEC 5.4）。画面に出る値（求心は0.1mm、気泡は1″に丸めた値）で判定する。
 pub fn judge_setup(
+    lang: Lang,
     mounted: bool,
     centering_mm: Option<f64>,
     tilt: Option<(f64, f64)>,
@@ -263,30 +312,38 @@ pub fn judge_setup(
 ) -> (bool, Vec<String>) {
     let mut reasons = Vec::new();
     if !mounted {
-        reasons.push("器械が載っていません。".to_string());
+        reasons.push(tr!(lang, "器械が載っていません。", "The instrument is not mounted."));
     }
     match centering_mm {
         Some(c) => {
             let shown = tenths(c);
             let limit = tenths(CENTERING_TOLERANCE_MM);
             if shown > limit {
-                reasons.push(format!(
+                reasons.push(tr!(
+                    lang,
                     "求心ズレ {} mm（許容 {} mm を {} mm 超えています）",
+                    "Centering error {0} mm ({2} mm over the {1} mm tolerance)",
                     fmt_tenths(shown),
                     fmt_tenths(limit),
                     fmt_tenths(shown - limit)
                 ));
             }
         }
-        None if mounted => reasons.push("レーザー求心点が地面に届いていません。".to_string()),
+        None if mounted => reasons.push(tr!(
+            lang,
+            "レーザー求心点が地面に届いていません。",
+            "The laser plummet does not reach the ground."
+        )),
         None => {}
     }
     if let Some((x, y)) = tilt {
         for (name, v) in [("X", x), ("Y", y)] {
             if !tilt_within_tolerance(v) {
                 let over = round_arcsec(v).abs() - TILT_TOLERANCE_SEC as i64;
-                reasons.push(format!(
+                reasons.push(tr!(
+                    lang,
                     "電子気泡 {} {}（許容 ±{}″ を {}″ 超えています）",
+                    "Electronic bubble {} {} ({3}″ over the ±{2}″ tolerance)",
                     name,
                     format_dms_signed(v),
                     TILT_TOLERANCE_SEC as i64,
@@ -296,7 +353,7 @@ pub fn judge_setup(
         }
     }
     if mounted && !clamp_tight {
-        reasons.push("定心桿が緩んだままです。".to_string());
+        reasons.push(tr!(lang, "定心桿が緩んだままです。", "The mounting screw is still loose."));
     }
     (reasons.is_empty(), reasons)
 }
@@ -588,6 +645,8 @@ pub struct ObservationView {
 /// 変化の少ない画面の状態（手順・注意・結果など）
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiState {
+    /// 画面に出す文の言語
+    pub lang: Lang,
     pub mode: Mode,
     pub phase: Phase,
     pub current_step: u8,
@@ -690,6 +749,8 @@ struct UiSignature {
 }
 
 pub struct Simulator {
+    /// 画面に出す文の言語（AIに渡す事実は日本語のまま）
+    lang: Lang,
     mode: Mode,
     phase: Phase,
     rng: Rng,
@@ -761,6 +822,18 @@ pub enum FactKind {
 }
 
 impl Simulator {
+    /// 画面に出す文の言語を決める（「はじめる」の前に選ぶ。AIに渡す事実は日本語のまま）
+    pub fn set_lang(&mut self, lang: Lang) {
+        if self.lang != lang {
+            self.lang = lang;
+            self.ui_revision += 1;
+        }
+    }
+
+    pub fn lang(&self) -> Lang {
+        self.lang
+    }
+
     pub fn new(mode: Mode, seed: u64) -> Simulator {
         let mut rng = Rng::new(seed);
         let tripod = random_tripod(&mut rng);
@@ -774,6 +847,7 @@ impl Simulator {
         }
         let circle_offset = rng.range(0.0, 2.0 * PI);
         let mut sim = Simulator {
+            lang: Lang::Ja,
             mode,
             phase: Phase::Setup,
             rng,
@@ -968,7 +1042,7 @@ impl Simulator {
             if self.recording {
                 self.frame_refusals.push(r);
             }
-            self.notify(NoticeKind::Info, r.message());
+            self.notify(NoticeKind::Info, r.message(self.lang));
         }
     }
 
@@ -995,14 +1069,22 @@ impl Simulator {
                 if !textbook_allows(self.guided_step, kind) {
                     let steps = textbook_steps();
                     let cur = &steps[(self.guided_step as usize).saturating_sub(1).min(6)];
+                    let short = cur.short_in(self.lang);
                     let text = match textbook_step_for(kind) {
-                        Some(n) => format!(
+                        Some(n) => tr!(
+                            self.lang,
                             "注意：いまは手順{}「{}」です。この操作は手順{}で行います。",
-                            self.guided_step, cur.short, n
+                            "Note: you are on step {} \"{}\". This operation belongs to step {}.",
+                            self.guided_step,
+                            short,
+                            n
                         ),
-                        None => format!(
+                        None => tr!(
+                            self.lang,
                             "注意：いまは手順{}「{}」です。",
-                            self.guided_step, cur.short
+                            "Note: you are on step {} \"{}\".",
+                            self.guided_step,
+                            short
                         ),
                     };
                     if self.notify(NoticeKind::Warning, text.clone()) {
@@ -1210,7 +1292,7 @@ impl Simulator {
         let snap = self.snapshot();
         let tilt = snap.electronic.map(|e| (e.x, e.y));
         let (passed, reasons) =
-            judge_setup(snap.mounted, snap.centering_mm, tilt, snap.clamp_tight);
+            judge_setup(self.lang, snap.mounted, snap.centering_mm, tilt, snap.clamp_tight);
         self.judgement = Some(SetupJudgement {
             passed,
             reasons,
@@ -1348,7 +1430,7 @@ impl Simulator {
         self.obs.instruction_result = self
             .obs
             .instruction
-            .map(|ins| judge_instruction(&ins, station, backsight, height_mm, measured));
+            .map(|ins| judge_instruction(self.lang, &ins, station, backsight, height_mm, measured));
         self.obs.station = Some(station);
         self.obs.backsight = Some(backsight);
         self.obs.instrument_height_mm = Some(height_mm);
@@ -1358,8 +1440,10 @@ impl Simulator {
         self.selected_step = 9;
         self.notify(
             NoticeKind::Success,
-            format!(
+            tr!(
+                self.lang,
                 "機械点 {}・BS {}・器械高 {} m をセットしました。",
+                "Set station {}, backsight {}, instrument height {} m.",
                 KNOWN_POINTS[station].name,
                 KNOWN_POINTS[backsight].name,
                 format_m(height_mm)
@@ -1415,8 +1499,10 @@ impl Simulator {
                 self.selected_step = 10;
                 self.notify(
                     NoticeKind::Success,
-                    format!(
+                    tr!(
+                        self.lang,
                         "BSを観測しました。方向角 {} をセットしました。",
+                        "Backsight measured. Bearing {} is set.",
                         format_dms_circle(rec.azimuth)
                     ),
                 );
@@ -1443,7 +1529,7 @@ impl Simulator {
                 );
                 self.obs.fs = Some(rec);
                 self.obs_rev += 1;
-                self.notify(NoticeKind::Success, "FSを観測しました。".into());
+                self.notify(NoticeKind::Success, tr!(self.lang, "FSを観測しました。", "Foresight measured."));
                 Ok(())
             }
             _ => Err(Refusal::UseTabletForStep8),
@@ -1610,8 +1696,10 @@ impl Simulator {
         let tilt_ok = s.electronic.map(|e| e.ok).unwrap_or(false);
         match step {
             1 => (
-                format!(
+                tr!(
+                    self.lang,
                     "3本とも踏み込み、脚頭の中心を測点から{}mm以内、脚頭の傾きを{}°以内にする",
+                    "Press in all three legs, with the head center within {}mm of the point and the head tilt within {}°",
                     TEXTBOOK_ROUGH_CENTER_MM,
                     TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI
                 ),
@@ -1620,38 +1708,51 @@ impl Simulator {
                     && s.head_tilt_deg <= TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI,
             ),
             2 => (
-                "器械を載せて、定心桿で固定する".into(),
+                tr!(self.lang, "器械を載せて、定心桿で固定する", "Mount the instrument and fix it with the mounting screw"),
                 s.mounted && s.clamp_tight,
             ),
             3 => (
-                format!(
+                tr!(
+                    self.lang,
                     "整準ネジで、レーザー求心点を測点に合わせる（ズレ{}mm以内）",
+                    "Bring the laser plummet onto the point with the leveling screws (within {}mm)",
                     TEXTBOOK_SCREW_CENTER_MM
                 ),
                 c_ok(TEXTBOOK_SCREW_CENTER_MM),
             ),
             4 => (
-                "三脚の足の伸縮で、円形気泡を中心の円に入れる".into(),
+                tr!(
+                    self.lang,
+                    "三脚の足の伸縮で、円形気泡を中心の円に入れる",
+                    "Adjust the leg lengths to bring the circular bubble into the center circle"
+                ),
                 s.circular.map(|c| c.in_circle).unwrap_or(false),
             ),
             5 => (
-                format!(
+                tr!(
+                    self.lang,
                     "整準ネジで、電子気泡をX・Yとも±{}″以内にする",
+                    "Use the leveling screws to bring the electronic bubble within ±{}″ on both X and Y",
                     TILT_TOLERANCE_SEC
                 ),
                 tilt_ok,
             ),
             6 => (
-                format!(
+                tr!(
+                    self.lang,
                     "定心桿を緩めて器械をずらし、求心ズレを{}mm以内にして締める",
+                    "Loosen the mounting screw, slide the instrument to bring the centering error within {}mm, then tighten",
                     CENTERING_TOLERANCE_MM
                 ),
                 c_ok(CENTERING_TOLERANCE_MM) && s.clamp_tight,
             ),
             _ => (
-                format!(
+                tr!(
+                    self.lang,
                     "求心ズレ{}mm以内・電子気泡±{}″以内の両方がそろったら「据付完了」",
-                    CENTERING_TOLERANCE_MM, TILT_TOLERANCE_SEC
+                    "When the centering error is within {}mm and the electronic bubble is within ±{}″, press \"Finish setup\"",
+                    CENTERING_TOLERANCE_MM,
+                    TILT_TOLERANCE_SEC
                 ),
                 c_ok(CENTERING_TOLERANCE_MM) && tilt_ok && s.clamp_tight,
             ),
@@ -1677,8 +1778,8 @@ impl Simulator {
             };
             steps.push(StepView {
                 no,
-                label: t.label,
-                short: t.short,
+                label: t.label_in(self.lang),
+                short: t.short_in(self.lang),
                 done,
                 current: self.phase != Phase::Observation && current == no,
                 locked: false,
@@ -1696,8 +1797,8 @@ impl Simulator {
                 || (no == 10 && self.obs.bs.is_none());
             steps.push(StepView {
                 no,
-                label: t.label,
-                short: t.short,
+                label: t.label_in(self.lang),
+                short: t.short_in(self.lang),
                 done,
                 current: self.phase == Phase::Observation && current == no,
                 locked,
@@ -1715,6 +1816,7 @@ impl Simulator {
             None
         };
         UiState {
+            lang: self.lang,
             mode: self.mode,
             phase: self.phase,
             current_step: current,
@@ -1725,7 +1827,7 @@ impl Simulator {
             mounted: self.inst.mounted,
             clamp_tight: self.inst.clamp_tight,
             loops: self.loops,
-            judgement: self.judgement.as_ref().map(judgement_view),
+            judgement: self.judgement.as_ref().map(|j| judgement_view(self.lang, j)),
             observation: self.observation_view(),
             advice: self.advice.as_ref().map(|a| AdviceView {
                 id: a.id,
@@ -1756,7 +1858,7 @@ impl Simulator {
             peep_sight: self.obs.peep_sight,
             instruction: self.obs.instruction.map(|i| InstructionView {
                 id: i.id,
-                fallback: coach::instruction_fallback(point_name(i.station), point_name(i.backsight)),
+                fallback: coach::instruction_fallback(self.lang, point_name(i.station), point_name(i.backsight)),
             }),
             instruction_result: self.obs.instruction_result.clone(),
             bs: self.obs.bs.map(|b| BacksightView {
@@ -1904,7 +2006,7 @@ impl Simulator {
         let (goal, goal_ok) = self.textbook_goal(step, &s);
         let next = self.next_action();
         let key = coach::action_key(&next);
-        let label = self.step_label(step);
+        let label = self.step_label_in(self.lang, step);
         let now = self.now_ms;
 
         if let Some(w) = self.navi_warning.take() {
@@ -1918,7 +2020,15 @@ impl Simulator {
             self.navi_goal_ok = goal_ok;
             self.navi_action_key = key.clone();
             self.navi_candidate = (key, now);
-            let text = format!("手順{}「{}」。目標は、{}。まずは、{}", step, label, goal, next);
+            let text = tr!(
+                self.lang,
+                "手順{}「{}」。目標は、{}。まずは、{}",
+                "Step {} \"{}\". Goal: {}. First, {}",
+                step,
+                label,
+                goal,
+                lower_first(self.lang, &next)
+            );
             self.push_navi(NaviKind::Enter, text, &goal, goal_ok, &next, true);
             return;
         }
@@ -1926,9 +2036,18 @@ impl Simulator {
             self.navi_goal_ok = goal_ok;
             if goal_ok {
                 let text = if step < 7 {
-                    format!("手順{}の目標ができた。「次の手順へ」を押そう", step)
+                    tr!(
+                        self.lang,
+                        "手順{}の目標ができた。「次の手順へ」を押そう",
+                        "Step {} goal is done. Press \"Next step\"",
+                        step
+                    )
                 } else {
-                    "求心と電子気泡の両方がそろった。「据付完了」を押そう".to_string()
+                    tr!(
+                        self.lang,
+                        "求心と電子気泡の両方がそろった。「据付完了」を押そう",
+                        "Centering and the electronic bubble are both in. Press \"Finish setup\""
+                    )
                 };
                 self.navi_action_key = key.clone();
                 self.push_navi(NaviKind::Done, text, &goal, goal_ok, &next, true);
@@ -1946,7 +2065,7 @@ impl Simulator {
         }
         if now - self.navi_candidate.1 >= NAVI_STABLE_MS && now - self.navi_last_ms >= NAVI_ACTION_GAP_MS {
             self.navi_action_key = key;
-            let text = format!("次は、{}", next);
+            let text = tr!(self.lang, "次は、{}", "Next, {}", lower_first(self.lang, &next));
             self.push_navi(NaviKind::Action, text, &goal, goal_ok, &next, false);
         }
     }
@@ -2048,27 +2167,37 @@ impl Simulator {
         };
         // ひとことの中身もコアが決める（AIは言い方を整えるだけ。AIが使えないときはこのまま出す）
         let content = match kind {
-            AdviceKind::OverTime => format!("次は、{}", next),
+            AdviceKind::OverTime => tr!(self.lang, "次は、{}", "Next, {}", lower_first(self.lang, &next)),
             AdviceKind::WrongWay => {
                 // 回しているネジの向きの話なので、整準ネジの回し方をそのまま言う
                 let screw = if textbook && self.guided_step == 3 {
-                    coach::screw_center_hint(&self.inst, &self.tripod.head)
+                    coach::screw_center_hint(self.lang, &self.inst, &self.tripod.head)
                 } else {
-                    coach::level_hint(&self.inst, &self.tripod.head)
+                    coach::level_hint(self.lang, &self.inst, &self.tripod.head)
                 };
-                format!("回している向きが逆。{}", screw.unwrap_or_else(|| next.clone()))
+                tr!(
+                    self.lang,
+                    "回している向きが逆。{}",
+                    "You are turning the wrong way. {}",
+                    screw.unwrap_or_else(|| next.clone())
+                )
             }
-            AdviceKind::ScrewLimit => {
-                "整準ネジだけでは直しきれない傾き。ネジを真ん中あたりへ戻して、先に脚の伸縮で円形気泡を合わせる"
-                    .to_string()
-            }
-            AdviceKind::ManyLoops => format!(
-                "ずらす量は小さくして、ずらしたら定心桿を締めてから整準する。次は、{}",
-                next
+            AdviceKind::ScrewLimit => tr!(
+                self.lang,
+                "整準ネジだけでは直しきれない傾き。ネジを真ん中あたりへ戻して、先に脚の伸縮で円形気泡を合わせる",
+                "The tilt is too large for the leveling screws alone. Return the screws to around the middle and center the circular bubble with the legs first"
             ),
-            AdviceKind::SlideBeforeLevel => format!(
+            AdviceKind::ManyLoops => tr!(
+                self.lang,
+                "ずらす量は小さくして、ずらしたら定心桿を締めてから整準する。次は、{}",
+                "Slide only a little, and tighten the mounting screw before leveling. Next, {}",
+                lower_first(self.lang, &next)
+            ),
+            AdviceKind::SlideBeforeLevel => tr!(
+                self.lang,
                 "器械をずらすのは、整準ネジで電子気泡を合わせてから。次は、{}",
-                next
+                "Slide the instrument only after leveling the electronic bubble with the screws. Next, {}",
+                lower_first(self.lang, &next)
             ),
         };
         let s = self.snapshot();
@@ -2226,15 +2355,20 @@ impl Simulator {
         ])
     }
 
-    /// いまの手順の名前
+    /// いまの手順の名前（AIに渡す事実用。日本語）
     fn step_label(&self, step: u8) -> &'static str {
+        self.step_label_in(Lang::Ja, step)
+    }
+
+    /// いまの手順の名前（言語を選ぶ）
+    fn step_label_in(&self, lang: Lang, step: u8) -> &'static str {
         let i = (step as usize).saturating_sub(1);
         let t = match (self.phase, self.mode) {
             (Phase::Observation, _) => observation_steps().get(i.saturating_sub(7)).copied(),
             (_, Mode::Textbook) => textbook_steps().get(i).copied(),
             (_, Mode::Field) => field_steps().get(i).copied(),
         };
-        t.map(|t| t.label).unwrap_or("")
+        t.map(|t| t.label_in(lang)).unwrap_or("")
     }
 
     /// いまの状態と次の操作（何でも質問のときにAIに渡す）
@@ -2384,9 +2518,17 @@ impl Simulator {
         match self.phase {
             Phase::SetupResult => {
                 if self.judgement.as_ref().map(|j| j.passed).unwrap_or(false) {
-                    "結果画面の「第2部：観測へ進む」を押す".into()
+                    tr!(
+                        self.lang,
+                        "結果画面の「第2部：観測へ進む」を押す",
+                        "Press \"Go to Part 2: Observation\" on the result screen"
+                    )
                 } else {
-                    "結果画面の「続行する」を押して、不合格の理由を直す".into()
+                    tr!(
+                        self.lang,
+                        "結果画面の「続行する」を押して、不合格の理由を直す",
+                        "Press \"Continue\" on the result screen and fix the reasons for failing"
+                    )
                 }
             }
             Phase::Observation => self.observation_action(&s),
@@ -2399,26 +2541,49 @@ impl Simulator {
 
     /// 据付の仕上げ：円形気泡 → （定心桿を緩めていれば、ずらし終えて締める）→ 電子気泡 → 求心 → 据付完了
     fn finish_action(&self, s: &Snapshot) -> String {
+        let lang = self.lang;
         if s.circular.map(|c| !c.in_circle).unwrap_or(false) {
-            return coach::leg_hint(&self.tripod, &self.inst)
-                .unwrap_or_else(|| "脚の伸縮で、円形気泡を中心の円に入れる".into());
+            return coach::leg_hint(lang, &self.tripod, &self.inst).unwrap_or_else(|| self.hint_circular());
         }
         if !s.clamp_tight {
             return match s.centering {
-                Some(c) if !s.centering_ok => coach::slide_hint(c, false),
-                _ => "定心桿を締める".into(),
+                Some(c) if !s.centering_ok => coach::slide_hint(lang, c, false),
+                _ => self.hint_tighten(),
             };
         }
         if !s.electronic.map(|e| e.ok).unwrap_or(false) {
-            return coach::level_hint(&self.inst, &self.tripod.head)
-                .unwrap_or_else(|| "整準ネジで、電子気泡をX・Yとも±15″以内に合わせる".into());
+            return coach::level_hint(lang, &self.inst, &self.tripod.head).unwrap_or_else(|| self.hint_level());
         }
         if !s.centering_ok {
             if let Some(c) = s.centering {
-                return coach::slide_hint(c, true);
+                return coach::slide_hint(lang, c, true);
             }
         }
-        "求心と電子気泡の両方が許容に入ったので「据付完了」を押す".into()
+        tr!(
+            lang,
+            "求心と電子気泡の両方が許容に入ったので「据付完了」を押す",
+            "Centering and the electronic bubble are both within tolerance, so press \"Finish setup\""
+        )
+    }
+
+    fn hint_circular(&self) -> String {
+        tr!(
+            self.lang,
+            "脚の伸縮で、円形気泡を中心の円に入れる",
+            "Adjust the leg lengths to bring the circular bubble into the center circle"
+        )
+    }
+
+    fn hint_tighten(&self) -> String {
+        tr!(self.lang, "定心桿を締める", "Tighten the mounting screw")
+    }
+
+    fn hint_level(&self) -> String {
+        tr!(
+            self.lang,
+            "整準ネジで、電子気泡をX・Yとも±15″以内に合わせる",
+            "Use the leveling screws to bring the electronic bubble within ±15″ on both X and Y"
+        )
     }
 
     fn field_action(&self, s: &Snapshot) -> String {
@@ -2429,23 +2594,38 @@ impl Simulator {
                 None => [s.head_center.x, s.head_center.y],
             };
             let d = p[0].hypot(p[1]);
-            let dir = coach::direction_words([-p[0], -p[1]]);
+            let lang = self.lang;
+            let dir = coach::direction_words(lang, [-p[0], -p[1]]);
             return if planted == 0 {
                 if d > HINT_PLACE_MM {
-                    format!(
+                    tr!(
+                        lang,
                         "三脚ごと{}へ約{:.0} mm運んで、レーザー点を測点に近づける",
-                        dir, d
+                        "Carry the whole tripod about {1:.0} mm toward {0} to bring the laser dot toward the point",
+                        dir,
+                        d
                     )
                 } else {
-                    "レーザー点が測点に近いので、どれか1本の脚を踏み込む".into()
+                    tr!(
+                        lang,
+                        "レーザー点が測点に近いので、どれか1本の脚を踏み込む",
+                        "The laser dot is near the point, so press in any one leg"
+                    )
                 }
             } else if d > HINT_ROUGH_CENTER_MM {
-                format!(
+                tr!(
+                    lang,
                     "踏み込んでいない脚を{}の方へ動かして、レーザー点を測点に近づける（いまのずれ約{:.0} mm）",
-                    dir, d
+                    "Move the legs that are not pressed in toward {} to bring the laser dot toward the point (now about {:.0} mm off)",
+                    dir,
+                    d
                 )
             } else {
-                "レーザー点が測点に近いので、残りの脚も踏み込む".into()
+                tr!(
+                    lang,
+                    "レーザー点が測点に近いので、残りの脚も踏み込む",
+                    "The laser dot is near the point, so press in the remaining legs"
+                )
             };
         }
         self.finish_action(s)
@@ -2454,9 +2634,14 @@ impl Simulator {
     fn textbook_action(&self, s: &Snapshot) -> String {
         let (_, goal_ok) = self.textbook_goal(self.guided_step, s);
         if goal_ok && self.guided_step < 7 {
-            return "この手順の目標はできているので「次の手順へ」を押す".into();
+            return tr!(
+                self.lang,
+                "この手順の目標はできているので「次の手順へ」を押す",
+                "The goal of this step is done, so press \"Next step\""
+            );
         }
         let head = &self.tripod.head;
+        let lang = self.lang;
         match self.guided_step {
             1 => {
                 let all = s.planted.iter().all(|p| *p);
@@ -2464,35 +2649,54 @@ impl Simulator {
                 let m = if all { 1.0 } else { HINT_MARGIN };
                 if !all && s.head_offset_mm > TEXTBOOK_ROUGH_CENTER_MM * HINT_MARGIN {
                     let c = s.head_center;
-                    format!(
+                    tr!(
+                        lang,
                         "三脚を{}へ約{:.0} mm運んで、脚頭の中心を測点の真上に近づける",
-                        coach::direction_words([-c.x, -c.y]),
+                        "Carry the tripod about {1:.0} mm toward {0} to bring the head center over the point",
+                        coach::direction_words(lang, [-c.x, -c.y]),
                         s.head_offset_mm
                     )
                 } else if s.head_tilt_deg > TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI * m {
-                    coach::leg_hint(&self.tripod, &self.inst)
-                        .unwrap_or_else(|| "脚の伸縮で、脚頭をだいたい水平にする".into())
+                    coach::leg_hint(lang, &self.tripod, &self.inst).unwrap_or_else(|| {
+                        tr!(
+                            lang,
+                            "脚の伸縮で、脚頭をだいたい水平にする",
+                            "Adjust the leg lengths to make the tripod head about level"
+                        )
+                    })
                 } else if !all {
-                    "脚を3本とも踏み込む".into()
+                    tr!(lang, "脚を3本とも踏み込む", "Press in all three legs")
                 } else {
-                    "脚頭の中心が測点から離れたまま踏み込んだので、「最初から」やり直すとよい".into()
+                    tr!(
+                        lang,
+                        "脚頭の中心が測点から離れたまま踏み込んだので、「最初から」やり直すとよい",
+                        "The legs were pressed in with the head center away from the point, so it is best to start over with \"Restart\""
+                    )
                 }
             }
-            2 => if s.mounted {
-                "定心桿を締める"
-            } else {
-                "「器械を載せて定心桿で固定する」を押す"
+            2 => {
+                if s.mounted {
+                    self.hint_tighten()
+                } else {
+                    tr!(
+                        lang,
+                        "「器械を載せて定心桿で固定する」を押す",
+                        "Press \"Mount the instrument and fix it with the mounting screw\""
+                    )
+                }
             }
-            .into(),
-            3 => coach::screw_center_hint(&self.inst, head)
-                .unwrap_or_else(|| "整準ネジで、レーザー点を測点に合わせる".into()),
-            4 => coach::leg_hint(&self.tripod, &self.inst)
-                .unwrap_or_else(|| "脚の伸縮で、円形気泡を中心の円に入れる".into()),
-            5 => coach::level_hint(&self.inst, head)
-                .unwrap_or_else(|| "整準ネジで、電子気泡をX・Yとも±15″以内に合わせる".into()),
+            3 => coach::screw_center_hint(lang, &self.inst, head).unwrap_or_else(|| {
+                tr!(
+                    lang,
+                    "整準ネジで、レーザー点を測点に合わせる",
+                    "Bring the laser dot onto the point with the leveling screws"
+                )
+            }),
+            4 => coach::leg_hint(lang, &self.tripod, &self.inst).unwrap_or_else(|| self.hint_circular()),
+            5 => coach::level_hint(lang, &self.inst, head).unwrap_or_else(|| self.hint_level()),
             6 => match s.centering {
-                Some(c) if !s.centering_ok => coach::slide_hint(c, s.clamp_tight),
-                _ => "定心桿を締める".into(),
+                Some(c) if !s.centering_ok => coach::slide_hint(lang, c, s.clamp_tight),
+                _ => self.hint_tighten(),
             },
             _ => self.finish_action(s),
         }
@@ -2500,11 +2704,20 @@ impl Simulator {
 
     fn observation_action(&self, s: &Snapshot) -> String {
         let step = self.selected_step;
+        let lang = self.lang;
         if step == 8 {
-            return "電子平板で、機械点（据えた点）とBS点（ターゲットが立っている点）を選び、器械高を巻尺で測って入れて「セット」を押す".into();
+            return tr!(
+                lang,
+                "電子平板で、機械点（据えた点）とBS点（ターゲットが立っている点）を選び、器械高を巻尺で測って入れて「セット」を押す",
+                "On the tablet, choose the station (the point you set up on) and the backsight (the point with the target), measure the instrument height with the tape, enter it, and press \"Set\""
+            );
         }
         if step == 10 && self.obs.fs.is_some() {
-            return "FSの観測は終わり。観測した座標と設計値との差を確かめる".into();
+            return tr!(
+                lang,
+                "FSの観測は終わり。観測した座標と設計値との差を確かめる",
+                "The foresight is measured. Check the difference between the observed coordinates and the design values"
+            );
         }
         let target = if step == 9 {
             backsight_target_world()
@@ -2512,46 +2725,71 @@ impl Simulator {
             foresight_target_world()
         };
         let (Some(o), Some(v), Some(eye)) = (s.optics, s.sight, s.trunnion) else {
-            return "器械が載っていない".into();
+            return tr!(lang, "器械が載っていない", "The instrument is not mounted");
         };
-        let dir = sight_words(v.dh_sec, v.dv_sec);
+        let dir = sight_words(lang, v.dh_sec, v.dv_sec);
         let rough = v.dh_sec.abs().max(v.dv_sec.abs()) > HINT_ROUGH_SIGHT_SEC;
         if o.peep_sight {
             return if rough {
-                format!("照準器をのぞいたまま、望遠鏡を{}へ回してターゲットを捉える", dir)
+                tr!(
+                    lang,
+                    "照準器をのぞいたまま、望遠鏡を{}へ回してターゲットを捉える",
+                    "Looking through the peep sight, turn the telescope {} to catch the target",
+                    dir
+                )
             } else {
-                "ターゲットを捉えたので、望遠鏡に切り替える（Pキー）".into()
+                tr!(
+                    lang,
+                    "ターゲットを捉えたので、望遠鏡に切り替える（Pキー）",
+                    "The target is caught, so switch to the telescope (P key)"
+                )
             };
         }
         if !o.reticle_ok {
-            return "接眼レンズを回して、十字線をくっきりさせる".into();
+            return tr!(lang, "接眼レンズを回して、十字線をくっきりさせる", "Turn the eyepiece until the crosshair is sharp");
         }
         if rough {
-            return format!(
+            return tr!(
+                lang,
                 "ターゲットが望遠鏡の視野から遠い（{}の方）ので、照準器（Pキー）で大まかに向ける",
+                "The target is far outside the telescope view ({}), so aim roughly with the peep sight (P key)",
                 dir
             );
         }
         if !o.focus_ok {
             let d_m = (target - eye).norm() / 1000.0;
             let near = d_m > 0.0 && self.obs.focus_per_m < 1.0 / d_m;
-            return format!(
-                "合焦つまみを「{}」へ回して、ターゲットのピントを合わせる",
-                if near { "近くへ" } else { "遠くへ" }
-            );
+            return match lang {
+                Lang::Ja => format!(
+                    "合焦つまみを「{}」へ回して、ターゲットのピントを合わせる",
+                    if near { "近くへ" } else { "遠くへ" }
+                ),
+                Lang::En => format!(
+                    "Turn the focus knob toward \"{}\" to focus on the target",
+                    if near { "Near" } else { "Far" }
+                ),
+            };
         }
         if !v.ok {
-            return format!(
+            return tr!(
+                lang,
                 "望遠鏡を{}へ動かして、十字線をターゲットの中心に合わせる（いま水平{:+.0}″・鉛直{:+.0}″）",
-                dir, v.dh_sec, v.dv_sec
+                "Move the telescope {} to put the crosshair on the target center (now horizontal {:+.0}″, vertical {:+.0}″)",
+                dir,
+                v.dh_sec,
+                v.dv_sec
             );
         }
-        "十字線がターゲットに合ったので「測量」を押す".into()
+        tr!(
+            lang,
+            "十字線がターゲットに合ったので「測量」を押す",
+            "The crosshair is on the target, so press \"Measure\""
+        )
     }
 
     fn review_facts(&self) -> Option<Vec<Fact>> {
         let j = self.judgement.as_ref()?;
-        let v = judgement_view(j);
+        let v = judgement_view(Lang::Ja, j);
         let steps = match self.mode {
             Mode::Textbook => textbook_steps(),
             Mode::Field => field_steps(),
@@ -2615,6 +2853,7 @@ fn point_name(i: usize) -> &'static str {
 
 /// 指示どおりにセットできたか（器械高は、巻尺で測った値との差で見る）
 fn judge_instruction(
+    lang: Lang,
     ins: &Instruction,
     station: usize,
     backsight: usize,
@@ -2624,15 +2863,23 @@ fn judge_instruction(
     let mut ok = true;
     let mut items = Vec::new();
     for (label, got, want) in [
-        ("機械点", station, ins.station),
-        ("BS点", backsight, ins.backsight),
+        (pick(lang, "機械点", "Station"), station, ins.station),
+        (pick(lang, "BS点", "Backsight"), backsight, ins.backsight),
     ] {
         if got == want {
-            items.push(format!("{}：{}（指示どおり）", label, point_name(got)));
+            items.push(tr!(
+                lang,
+                "{}：{}（指示どおり）",
+                "{}: {} (as instructed)",
+                label,
+                point_name(got)
+            ));
         } else {
             ok = false;
-            items.push(format!(
+            items.push(tr!(
+                lang,
                 "{}：{}（指示は{}）",
+                "{}: {} (instructed: {})",
                 label,
                 point_name(got),
                 point_name(want)
@@ -2641,14 +2888,18 @@ fn judge_instruction(
     }
     if let Some(m) = measured_mm {
         if (height_mm - m).abs() <= INSTRUCTION_HEIGHT_TOL_MM {
-            items.push(format!(
+            items.push(tr!(
+                lang,
                 "器械高：{} m（巻尺で測った値どおり）",
+                "Instrument height: {} m (matches the tape measurement)",
                 format_m(height_mm)
             ));
         } else {
             ok = false;
-            items.push(format!(
+            items.push(tr!(
+                lang,
                 "器械高：{} m（巻尺で測った値は {} m。{}違う）",
+                "Instrument height: {} m (the tape measured {} m; off by {})",
                 format_m(height_mm),
                 format_m(m),
                 format_diff_mm(height_mm - m)
@@ -2659,19 +2910,33 @@ fn judge_instruction(
 }
 
 /// 望遠鏡を動かす向きの言葉（ずれ＝ターゲットが十字線の右・上にあると＋）
-fn sight_words(dh_sec: f64, dv_sec: f64) -> &'static str {
+fn sight_words(lang: Lang, dh_sec: f64, dv_sec: f64) -> &'static str {
     let h = dh_sec.abs() > SIGHT_OK_SEC;
     let v = dv_sec.abs() > SIGHT_OK_SEC;
     match (h, v, dh_sec > 0.0, dv_sec > 0.0) {
-        (true, true, true, true) => "右上",
-        (true, true, true, false) => "右下",
-        (true, true, false, true) => "左上",
-        (true, true, false, false) => "左下",
-        (true, false, true, _) => "右",
-        (true, false, false, _) => "左",
-        (false, true, _, true) => "上",
-        (false, true, _, false) => "下",
-        (false, false, _, _) => "そのまま",
+        (true, true, true, true) => pick(lang, "右上", "up and right"),
+        (true, true, true, false) => pick(lang, "右下", "down and right"),
+        (true, true, false, true) => pick(lang, "左上", "up and left"),
+        (true, true, false, false) => pick(lang, "左下", "down and left"),
+        (true, false, true, _) => pick(lang, "右", "right"),
+        (true, false, false, _) => pick(lang, "左", "left"),
+        (false, true, _, true) => pick(lang, "上", "up"),
+        (false, true, _, false) => pick(lang, "下", "down"),
+        (false, false, _, _) => pick(lang, "そのまま", "as it is"),
+    }
+}
+
+/// 英語の文を文の途中に入れるとき、先頭を小文字にする（「Next, press …」）
+fn lower_first(lang: Lang, s: &str) -> String {
+    match lang {
+        Lang::Ja => s.to_string(),
+        Lang::En => {
+            let mut c = s.chars();
+            match c.next() {
+                Some(f) => f.to_lowercase().chain(c).collect(),
+                None => String::new(),
+            }
+        }
     }
 }
 
@@ -2724,14 +2989,14 @@ fn check_sight(snap: &Snapshot) -> Result<(), Refusal> {
     }
 }
 
-fn judgement_view(j: &SetupJudgement) -> JudgementView {
+fn judgement_view(lang: Lang, j: &SetupJudgement) -> JudgementView {
     let rating_text = if j.passed {
         Some(if j.time_ms <= TIME_EXPERT_MS {
-            "熟練（2分以内）".to_string()
+            tr!(lang, "熟練（2分以内）", "Expert (within 2 minutes)")
         } else if j.time_ms <= TIME_PASS_MS {
-            "合格の目安（3分以内）".to_string()
+            tr!(lang, "合格の目安（3分以内）", "Pass target (within 3 minutes)")
         } else {
-            "合格（目安の3分を超えました）".to_string()
+            tr!(lang, "合格（目安の3分を超えました）", "Pass (over the 3-minute target)")
         })
     } else {
         None

@@ -10,6 +10,7 @@ use crate::config::{
     REVIEW_LOOPS_REF, REVIEW_WRONG_WAY_SEC, SLIDE_BEFORE_LEVEL_SEC, STEP_VISITS_MAX,
     TEXTBOOK_STEP_REF_SEC, TILT_TOLERANCE_SEC,
 };
+use crate::i18n::{pick, Lang};
 use crate::instrument::{CircularBubble, Instrument, InstrumentPose, Thumb};
 use crate::steps::StepText;
 use crate::tripod::{HeadPose, Tripod};
@@ -242,7 +243,7 @@ pub fn format_signed_m(mm: f64) -> String {
     }
 }
 
-/// 読み上げ用の文：数字の入った全角かっこ（…）を除く（いまの角度などの数値は読まない。
+/// 読み上げ用の文：数字の入ったかっこ（…）・(...) を除く（いまの角度などの数値は読まない。
 /// 「脚3（右手前）」のような、数字の無いかっこ書きは残す）
 pub fn speech_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -250,16 +251,19 @@ pub fn speech_text(s: &str) -> String {
     let mut depth = 0usize;
     for c in s.chars() {
         match c {
-            '（' => {
+            '（' | '(' => {
                 depth += 1;
                 group.push(c);
             }
-            '）' if depth > 0 => {
+            '）' | ')' if depth > 0 => {
                 group.push(c);
                 depth -= 1;
                 if depth == 0 {
                     if !group.chars().any(|g| g.is_ascii_digit()) {
                         out.push_str(&group);
+                    } else if out.ends_with(' ') {
+                        // 英語の「… (within 1mm).」の前の空白も除く
+                        out.pop();
                     }
                     group.clear();
                 }
@@ -535,27 +539,27 @@ pub fn review_facts(r: &ReviewInput) -> Vec<Fact> {
 // ---------------------------------------------------------------------------
 
 /// 向きの言葉。操作する人は手前（南）に立って奥（北）を向く：右＝東、奥＝北。`v`＝[東, 北]
-pub fn direction_words(v: [f64; 2]) -> &'static str {
+pub fn direction_words(lang: Lang, v: [f64; 2]) -> &'static str {
     let (e, n) = (v[0], v[1]);
     let (ae, an) = (e.abs(), n.abs());
     if ae < 0.4 * an {
         if n >= 0.0 {
-            "奥"
+            pick(lang, "奥", "the far side")
         } else {
-            "手前"
+            pick(lang, "手前", "the near side")
         }
     } else if an < 0.4 * ae {
         if e >= 0.0 {
-            "右"
+            pick(lang, "右", "the right")
         } else {
-            "左"
+            pick(lang, "左", "the left")
         }
     } else {
         match (e >= 0.0, n >= 0.0) {
-            (true, true) => "右奥",
-            (false, true) => "左奥",
-            (true, false) => "右手前",
-            (false, false) => "左手前",
+            (true, true) => pick(lang, "右奥", "the far right"),
+            (false, true) => pick(lang, "左奥", "the far left"),
+            (true, false) => pick(lang, "右手前", "the near right"),
+            (false, false) => pick(lang, "左手前", "the near left"),
         }
     }
 }
@@ -565,6 +569,7 @@ pub fn direction_words(v: [f64; 2]) -> &'static str {
 struct ScrewMove {
     turns: &'static [(usize, Thumb)],
     text: &'static str,
+    en: &'static str,
 }
 
 /// 電子気泡の X（A→B の向き）を直す：A・B を同時に
@@ -572,10 +577,12 @@ const LEVEL_X: [ScrewMove; 2] = [
     ScrewMove {
         turns: &[(0, Thumb::Right), (1, Thumb::Left)],
         text: "整準ネジA・Bを同時に内側へ回す（親指どうしを近づける）",
+        en: "Turn leveling screws A and B inward together (thumbs toward each other)",
     },
     ScrewMove {
         turns: &[(0, Thumb::Left), (1, Thumb::Right)],
         text: "整準ネジA・Bを同時に外側へ回す（親指どうしを離す）",
+        en: "Turn leveling screws A and B outward together (thumbs apart)",
     },
 ];
 
@@ -584,10 +591,12 @@ const LEVEL_Y: [ScrewMove; 2] = [
     ScrewMove {
         turns: &[(2, Thumb::Left)],
         text: "整準ネジCを、親指を左へ動かす向きに回す",
+        en: "Turn leveling screw C so that your thumb moves left",
     },
     ScrewMove {
         turns: &[(2, Thumb::Right)],
         text: "整準ネジCを、親指を右へ動かす向きに回す",
+        en: "Turn leveling screw C so that your thumb moves right",
     },
 ];
 
@@ -596,26 +605,32 @@ const ANY_SCREW: [ScrewMove; 8] = [
     ScrewMove {
         turns: &[(0, Thumb::Left)],
         text: "整準ネジAを、親指を左へ動かす向きに回す",
+        en: "Turn leveling screw A so that your thumb moves left",
     },
     ScrewMove {
         turns: &[(0, Thumb::Right)],
         text: "整準ネジAを、親指を右へ動かす向きに回す",
+        en: "Turn leveling screw A so that your thumb moves right",
     },
     ScrewMove {
         turns: &[(1, Thumb::Left)],
         text: "整準ネジBを、親指を左へ動かす向きに回す",
+        en: "Turn leveling screw B so that your thumb moves left",
     },
     ScrewMove {
         turns: &[(1, Thumb::Right)],
         text: "整準ネジBを、親指を右へ動かす向きに回す",
+        en: "Turn leveling screw B so that your thumb moves right",
     },
     ScrewMove {
         turns: &[(2, Thumb::Left)],
         text: "整準ネジCを、親指を左へ動かす向きに回す",
+        en: "Turn leveling screw C so that your thumb moves left",
     },
     ScrewMove {
         turns: &[(2, Thumb::Right)],
         text: "整準ネジCを、親指を右へ動かす向きに回す",
+        en: "Turn leveling screw C so that your thumb moves right",
     },
     LEVEL_X[0],
     LEVEL_X[1],
@@ -655,7 +670,7 @@ fn best_screw_move<'a>(
 }
 
 /// 電子気泡を合わせる整準ネジの回し方（大きくずれているほうの軸から）
-pub fn level_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
+pub fn level_hint(lang: Lang, inst: &Instrument, head: &HeadPose) -> Option<String> {
     let (x, y) = inst.pose(head)?.tilt_xy();
     let (xs, ys) = (to_arcsec(x), to_arcsec(y));
     let (moves, axis, name): (&[ScrewMove], usize, &str) = if xs.abs() >= ys.abs() {
@@ -667,26 +682,35 @@ pub fn level_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
         let (a, b) = p.tilt_xy();
         Some(to_arcsec(if axis == 0 { a } else { b }).abs())
     })?;
-    Some(format!(
+    let now = format_dms_signed(if axis == 0 { x } else { y });
+    Some(tr!(
+        lang,
         "{}（電子気泡の{}がいま{}。0に近づける）",
-        m.text,
+        "{} (electronic bubble {} is now {}; bring it to 0)",
+        pick(lang, m.text, m.en),
         name,
-        format_dms_signed(if axis == 0 { x } else { y })
+        now
     ))
 }
 
 /// レーザー点を測点に近づける整準ネジの回し方（教科書モード手順3）
-pub fn screw_center_hint(inst: &Instrument, head: &HeadPose) -> Option<String> {
+pub fn screw_center_hint(lang: Lang, inst: &Instrument, head: &HeadPose) -> Option<String> {
     let m = best_screw_move(inst, head, &ANY_SCREW, |p| {
         p.laser_point().map(|l| l.x.hypot(l.y))
     })?;
-    Some(format!("{}（レーザー点を測点に近づける）", m.text))
+    Some(tr!(
+        lang,
+        "{}（レーザー点を測点に近づける）",
+        "{}, to bring the laser dot toward the point",
+        pick(lang, m.text, m.en)
+    ))
 }
 
 pub const LEG_LABELS: [&str; 3] = ["脚1（奥）", "脚2（左手前）", "脚3（右手前）"];
+pub const LEG_LABELS_EN: [&str; 3] = ["Leg 1 (far)", "Leg 2 (near left)", "Leg 3 (near right)"];
 
 /// 円形気泡（器械が無ければ脚頭の傾き）を合わせる脚の伸縮。試しに伸縮して、良くなるものを選ぶ
-pub fn leg_hint(tripod: &Tripod, inst: &Instrument) -> Option<String> {
+pub fn leg_hint(lang: Lang, tripod: &Tripod, inst: &Instrument) -> Option<String> {
     let measure = |t: &Tripod| -> Option<f64> {
         match inst.pose(&t.head) {
             Some(p) => Some(CircularBubble::from_pose(&p).raw_mm),
@@ -712,16 +736,24 @@ pub fn leg_hint(tripod: &Tripod, inst: &Instrument) -> Option<String> {
     }
     let (leg, extend, _) = best?;
     let what = if inst.mounted {
-        "円形気泡を中心の円に近づける"
+        pick(lang, "円形気泡を中心の円に近づける", "to bring the circular bubble toward the center circle")
     } else {
-        "脚頭を水平に近づける"
+        pick(lang, "脚頭を水平に近づける", "to bring the tripod head closer to level")
     };
-    Some(format!(
-        "{}を{}（{}）",
-        LEG_LABELS[leg],
-        if extend { "伸ばす" } else { "縮める" },
-        what
-    ))
+    Some(match lang {
+        Lang::Ja => format!(
+            "{}を{}（{}）",
+            LEG_LABELS[leg],
+            if extend { "伸ばす" } else { "縮める" },
+            what
+        ),
+        Lang::En => format!(
+            "{} {} {}",
+            if extend { "Extend" } else { "Shorten" },
+            LEG_LABELS_EN[leg],
+            what
+        ),
+    })
 }
 
 /// 現場の指示の言い回し（仮。オーナーに現場の言葉づかいを確認してもらう）
@@ -740,24 +772,36 @@ pub fn instruction_style(style: u8) -> &'static str {
 }
 
 /// AIが使えないときの、決まった言い方の指示
-pub fn instruction_fallback(station: &str, backsight: &str) -> String {
-    format!(
+pub fn instruction_fallback(lang: Lang, station: &str, backsight: &str) -> String {
+    tr!(
+        lang,
         "機械点は{}、BSは{}な。器械高は巻尺で測って入れといて。",
-        station, backsight
+        "Station is {}, backsight is {}. Measure the instrument height with the tape and enter it.",
+        station,
+        backsight
     )
 }
 
 /// 器械ずらしで求心を合わせる向き（`centering`＝レーザー点 − 測点 [東, 北] mm）
-pub fn slide_hint(centering: [f64; 2], clamp_tight: bool) -> String {
+pub fn slide_hint(lang: Lang, centering: [f64; 2], clamp_tight: bool) -> String {
     let d = centering[0].hypot(centering[1]);
-    let dir = direction_words([-centering[0], -centering[1]]);
+    let dir = direction_words(lang, [-centering[0], -centering[1]]);
     if clamp_tight {
-        format!(
+        tr!(
+            lang,
             "定心桿を緩めて、器械を{}へ約{:.1} mmずらし、終わったら締める",
-            dir, d
+            "Loosen the mounting screw, slide the instrument about {1:.1} mm toward {0}, then tighten it",
+            dir,
+            d
         )
     } else {
-        format!("器械を{}へ約{:.1} mmずらし、終わったら定心桿を締める", dir, d)
+        tr!(
+            lang,
+            "器械を{}へ約{:.1} mmずらし、終わったら定心桿を締める",
+            "Slide the instrument about {1:.1} mm toward {0}, then tighten the mounting screw",
+            dir,
+            d
+        )
     }
 }
 
@@ -859,10 +903,10 @@ mod tests {
 
     #[test]
     fn direction_words_follow_the_operator_view() {
-        assert_eq!(direction_words([1.0, 0.0]), "右");
-        assert_eq!(direction_words([0.0, -1.0]), "手前");
-        assert_eq!(direction_words([-1.0, 1.0]), "左奥");
-        assert_eq!(direction_words([0.1, 1.0]), "奥");
+        assert_eq!(direction_words(Lang::Ja, [1.0, 0.0]), "右");
+        assert_eq!(direction_words(Lang::Ja, [0.0, -1.0]), "手前");
+        assert_eq!(direction_words(Lang::Ja, [-1.0, 1.0]), "左奥");
+        assert_eq!(direction_words(Lang::Ja, [0.1, 1.0]), "奥");
     }
 
     #[test]

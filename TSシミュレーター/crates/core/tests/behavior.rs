@@ -10,7 +10,7 @@ use ts_core::math::{Mat3, Vec3};
 use ts_core::sim::{judge_setup, Command, NoticeKind, OpticsView, Refusal, Snapshot};
 use ts_core::survey::{direction_to, foresight_ground_world};
 use ts_core::tripod::Tripod;
-use ts_core::{Mode, Phase, Simulator, Speed, Thumb};
+use ts_core::{Lang, Mode, Phase, Simulator, Speed, Thumb};
 
 const A: usize = 0;
 const B: usize = 1;
@@ -580,14 +580,14 @@ fn six_seven_loop_converges_from_random_starts() {
 fn judge_boundaries() {
     let ok_tilt = Some((arcsec(15.4), arcsec(-15.4)));
     // 求心：表示が 0.5 mm なら合格、0.6 mm なら不合格
-    assert!(judge_setup(true, Some(0.54), ok_tilt, true).0);
-    assert!(judge_setup(true, Some(0.5), ok_tilt, true).0);
-    let (p, r) = judge_setup(true, Some(0.55), ok_tilt, true);
+    assert!(judge_setup(Lang::Ja, true, Some(0.54), ok_tilt, true).0);
+    assert!(judge_setup(Lang::Ja, true, Some(0.5), ok_tilt, true).0);
+    let (p, r) = judge_setup(Lang::Ja, true, Some(0.55), ok_tilt, true);
     assert!(!p);
     assert!(r.iter().any(|s| s.contains("求心ズレ 0.6 mm")), "{r:?}");
     // 電子気泡：表示が15″なら合格、16″なら不合格（X・Yそれぞれ）
-    assert!(!judge_setup(true, Some(0.1), Some((arcsec(15.5), 0.0)), true).0);
-    let (p, r) = judge_setup(true, Some(0.1), Some((0.0, arcsec(-16.0))), true);
+    assert!(!judge_setup(Lang::Ja, true, Some(0.1), Some((arcsec(15.5), 0.0)), true).0);
+    let (p, r) = judge_setup(Lang::Ja, true, Some(0.1), Some((0.0, arcsec(-16.0))), true);
     assert!(!p);
     assert!(
         r.iter()
@@ -598,7 +598,7 @@ fn judge_boundaries() {
 
 #[test]
 fn judge_fails_when_clamp_loose() {
-    let (p, r) = judge_setup(true, Some(0.0), Some((0.0, 0.0)), false);
+    let (p, r) = judge_setup(Lang::Ja, true, Some(0.0), Some((0.0, 0.0)), false);
     assert!(!p);
     assert!(r.iter().any(|s| s.contains("定心桿")));
 
