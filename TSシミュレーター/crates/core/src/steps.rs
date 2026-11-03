@@ -40,7 +40,7 @@ pub fn field_steps() -> [StepText; 7] {
     ]
 }
 
-/// 教科書モード：第1部の手順（SPEC 5.3。本番前に教本で要確認）
+/// 教科書モード：第1部の手順（SPEC 5.3）
 pub fn textbook_steps() -> [StepText; 7] {
     [
         StepText {
