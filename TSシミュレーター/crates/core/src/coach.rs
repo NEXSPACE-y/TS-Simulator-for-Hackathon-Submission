@@ -579,8 +579,10 @@ const ANY_SCREW: [ScrewMove; 8] = [
     LEVEL_X[1],
 ];
 
-/// 試しに回す量 [回転]
-const TRY_TURNS: f64 = 0.01;
+/// 試しに回す量 [回転]（行き過ぎないよう、向きだけがわかる小さな量）
+const TRY_TURNS: f64 = 0.001;
+/// 試しに伸縮する量 [mm]
+const TRY_LEG_MM: f64 = 0.1;
 
 /// 候補を試しに回して、目標の値が一番小さくなるものを選ぶ（良くならなければ None）
 fn best_screw_move<'a>(
@@ -653,7 +655,7 @@ pub fn leg_hint(tripod: &Tripod, inst: &Instrument) -> Option<String> {
         for extend in [true, false] {
             let mut t = tripod.clone();
             let mut lens = t.leg_len;
-            let d = if extend { 2.0 } else { -2.0 };
+            let d = if extend { TRY_LEG_MM } else { -TRY_LEG_MM };
             lens[leg] = (lens[leg] + d).clamp(LEG_LENGTH_MIN_MM, LEG_LENGTH_MAX_MM);
             if t.try_set(t.feet, lens).is_err() {
                 continue;
@@ -676,6 +678,29 @@ pub fn leg_hint(tripod: &Tripod, inst: &Instrument) -> Option<String> {
         if extend { "伸ばす" } else { "縮める" },
         what
     ))
+}
+
+/// 現場の指示の言い回し（仮。オーナーに現場の言葉づかいを確認してもらう）
+pub const INSTRUCTION_STYLES: [&str; 4] = [
+    "短く、ぶっきらぼうに",
+    "ていねいに、順を追って",
+    "現場の略語を多めに（BS、器械高、据えた点など）",
+    "理由をひとこと添えて",
+];
+
+pub fn instruction_style(style: u8) -> &'static str {
+    INSTRUCTION_STYLES
+        .get((style as usize).saturating_sub(1))
+        .copied()
+        .unwrap_or(INSTRUCTION_STYLES[0])
+}
+
+/// AIが使えないときの、決まった言い方の指示
+pub fn instruction_fallback(station: &str, backsight: &str) -> String {
+    format!(
+        "機械点は{}、BSは{}な。器械高は巻尺で測って入れといて。",
+        station, backsight
+    )
 }
 
 /// 器械ずらしで求心を合わせる向き（`centering`＝レーザー点 − 測点 [東, 北] mm）

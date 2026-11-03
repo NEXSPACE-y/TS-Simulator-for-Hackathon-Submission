@@ -276,3 +276,166 @@ fn calc_facts_show_each_step_with_the_core_numbers() {
         .iter()
         .all(|f| f.value.chars().count() <= 240 && f.key.chars().count() <= 40));
 }
+
+// ---------------------------------------------------------------------------
+// 現場の指示の聞き取り（正解と判定はコア）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn instruction_is_set_and_judged_by_the_core() {
+    let mut sim = level_sim();
+    assert!(sim.complete_setup().map(|j| j.passed).unwrap_or(false));
+    assert!(sim.start_observation().is_ok());
+    assert!(sim.ai_facts(FactKind::Instruction).is_none());
+    sim.frame(0.0, &[Command::RequestInstruction]);
+    let Some(facts) = sim.ai_facts(FactKind::Instruction) else {
+        unreachable!("指示を頼んだら事実がある");
+    };
+    // 機械点は据えた点、BS点はターゲットが立っている点
+    assert_eq!(value(&facts, "機械点"), Some("T-1"));
+    assert_eq!(value(&facts, "BS点"), Some("T-2"));
+    assert!(value(&facts, "言い回し").is_some());
+
+    // BSを間違え、器械高を測らずに入れた
+    assert!(sim.set_station(0, 2, 1600.0).is_ok());
+    let Some(r) = sim.obs.instruction_result.clone() else {
+        unreachable!("指示のあとのセットは判定される");
+    };
+    assert!(!r.ok);
+    assert!(r.items.iter().any(|s| s.contains("BS点：T-3（指示はT-2）")), "{:?}", r.items);
+    assert!(r.items.iter().any(|s| s.contains("巻尺で測った値は")), "{:?}", r.items);
+
+    // 指示どおり（器械高は巻尺で測った値を mm に丸めて入れる）
+    sim.frame(10.0, &[Command::RequestInstruction]);
+    assert!(sim.obs.instruction_result.is_none());
+    let ih = sim.snapshot().instrument_height_mm.unwrap_or(f64::NAN).round();
+    assert!(sim.set_station(0, 1, ih).is_ok());
+    let Some(r) = sim.obs.instruction_result.clone() else {
+        unreachable!();
+    };
+    assert!(r.ok, "{:?}", r.items);
+}
+
+// ---------------------------------------------------------------------------
+// 次の操作のとおりに操作すると、据付が合格まで行くこと（向きの言葉の確かめ）
+// ---------------------------------------------------------------------------
+
+const DIRS: [(&str, [f64; 2]); 8] = [
+    ("右手前", [0.707, -0.707]),
+    ("左手前", [-0.707, -0.707]),
+    ("右奥", [0.707, 0.707]),
+    ("左奥", [-0.707, 0.707]),
+    ("手前", [0.0, -1.0]),
+    ("奥", [0.0, 1.0]),
+    ("右", [1.0, 0.0]),
+    ("左", [-1.0, 0.0]),
+];
+
+/// 文の中の「〇〇へ」「〇〇の方へ」の向き
+fn dir_in(text: &str) -> Option<[f64; 2]> {
+    DIRS.iter()
+        .find(|(w, _)| text.contains(&format!("{}へ", w)) || text.contains(&format!("{}の方へ", w)))
+        .map(|(_, v)| *v)
+}
+
+/// 次の操作の文を、操作に直す（文の中身＝向きは、コアが決めたもの）
+fn commands_for(sim: &Simulator, hint: &str) -> Vec<Command> {
+    let screw = |screw, thumb| Command::TurnScrew {
+        screw,
+        thumb,
+        speed: Speed::Fine,
+    };
+    let unplanted = sim.tripod.planted.iter().position(|p| !p).unwrap_or(0);
+    let single = |name: &str| {
+        ["A", "B", "C"]
+            .iter()
+            .position(|n| hint.starts_with(&format!("整準ネジ{}を、親指を{}へ", n, name)))
+    };
+    if hint.contains("「据付完了」を押す") {
+        vec![Command::CompleteSetup]
+    } else if hint.contains("「次の手順へ」を押す") {
+        vec![Command::NextStep]
+    } else if hint.contains("「器械を載せて定心桿で固定する」を押す") {
+        vec![Command::MountInstrument]
+    } else if let Some(k) = single("左") {
+        vec![screw(k, Thumb::Left)]
+    } else if let Some(k) = single("右") {
+        vec![screw(k, Thumb::Right)]
+    } else if hint.starts_with("三脚を") {
+        dir_in(hint)
+            .map(|dir| {
+                vec![Command::MoveFreeLegs {
+                    dir,
+                    speed: Speed::Medium,
+                }]
+            })
+            .unwrap_or_default()
+    } else if hint.contains("踏み込む") {
+        vec![Command::PressLeg { leg: unplanted }]
+    } else if hint.contains("三脚ごと") || hint.contains("踏み込んでいない脚を") {
+        let speed = if hint.contains("三脚ごと") {
+            Speed::Medium
+        } else {
+            Speed::Fine
+        };
+        dir_in(hint)
+            .map(|dir| vec![Command::MoveFreeLegs { dir, speed }])
+            .unwrap_or_default()
+    } else if let Some(i) = ["脚1", "脚2", "脚3"].iter().position(|l| hint.starts_with(l)) {
+        vec![Command::ChangeLegLength {
+            leg: i,
+            extend: hint.contains("伸ばす"),
+            speed: Speed::Fine,
+        }]
+    } else if hint.contains("A・Bを同時に内側へ") {
+        vec![screw(0, Thumb::Right), screw(1, Thumb::Left)]
+    } else if hint.contains("A・Bを同時に外側へ") {
+        vec![screw(0, Thumb::Left), screw(1, Thumb::Right)]
+    } else if hint.contains("整準ネジCを、親指を左へ") {
+        vec![screw(C, Thumb::Left)]
+    } else if hint.contains("整準ネジCを、親指を右へ") {
+        vec![screw(C, Thumb::Right)]
+    } else if hint.starts_with("定心桿を緩めて") {
+        vec![Command::SetClamp { tight: false }]
+    } else if hint.starts_with("器械を") {
+        dir_in(hint)
+            .map(|dir| {
+                vec![Command::SlideInstrument {
+                    dir,
+                    speed: Speed::Fine,
+                }]
+            })
+            .unwrap_or_default()
+    } else if hint.starts_with("定心桿を締める") {
+        vec![Command::SetClamp { tight: true }]
+    } else {
+        vec![]
+    }
+}
+
+fn follow_hints_to_pass(mode: Mode, seed: u64) {
+    let mut sim = Simulator::new(mode, seed);
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    for _ in 0..40_000 {
+        let hint = sim.next_action();
+        let cmds = commands_for(&sim, &hint);
+        assert!(!cmds.is_empty(), "操作に直せない次の操作：{}", hint);
+        t += 50.0;
+        sim.frame(t, &cmds);
+        if let Some(j) = sim.judgement() {
+            assert!(j.passed, "次の操作どおりに「据付完了」を押したら合格するはず：{:?}", j.reasons);
+            return;
+        }
+    }
+    unreachable!("次の操作どおりに進めても終わらなかった（最後の操作：{}）", sim.next_action());
+}
+
+#[test]
+fn following_next_actions_reaches_a_pass() {
+    for seed in [1, 2, 3, 7, 11, 42] {
+        follow_hints_to_pass(Mode::Field, seed);
+        follow_hints_to_pass(Mode::Textbook, seed);
+    }
+}
+

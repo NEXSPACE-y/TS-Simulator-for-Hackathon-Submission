@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::*;
 const COMMAND_STRIDE: usize = 4;
 
 /// 操作のコード（TS側は `command_codes_json()` から読む）
-const COMMAND_CODES: [(&str, u32); 18] = [
+const COMMAND_CODES: [(&str, u32); 19] = [
     ("moveFreeLegs", 1),
     ("pressLeg", 2),
     ("changeLegLength", 3),
@@ -39,6 +39,7 @@ const COMMAND_CODES: [(&str, u32); 18] = [
     ("turnFocus", 16),
     ("turnEyepiece", 17),
     ("setPeepSight", 18),
+    ("requestInstruction", 19),
 ];
 
 fn index(v: f64) -> usize {
@@ -107,6 +108,7 @@ fn decode(code: f64, a: f64, b: f64, c: f64) -> Option<Command> {
             speed: speed(b),
         },
         18 => Command::SetPeepSight { on: a > 0.0 },
+        19 => Command::RequestInstruction,
         _ => return None,
     };
     Some(cmd)
@@ -315,6 +317,7 @@ fn fact_kind(code: u32) -> Option<FactKind> {
         1 => Some(FactKind::Review),
         2 => Some(FactKind::Status),
         3 => Some(FactKind::Calc),
+        4 => Some(FactKind::Instruction),
         _ => None,
     }
 }
@@ -426,8 +429,21 @@ fn ui_json(u: &UiState) -> String {
             )
         })
         .unwrap_or_else(|| "null".into());
+    let instruction = o
+        .instruction
+        .as_ref()
+        .map(|i| format!(r#"{{"id":{},"fallback":{}}}"#, i.id, js(&i.fallback)))
+        .unwrap_or_else(|| "null".into());
+    let instruction_result = o
+        .instruction_result
+        .as_ref()
+        .map(|r| {
+            let items: Vec<String> = r.items.iter().map(|s| js(s)).collect();
+            format!(r#"{{"ok":{},"items":[{}]}}"#, r.ok, items.join(","))
+        })
+        .unwrap_or_else(|| "null".into());
     let observation = format!(
-        r#"{{"points":[{}],"design":{},"station":{},"backsight":{},"heightText":{},"bs":{},"fs":{},"peepSight":{}}}"#,
+        r#"{{"points":[{}],"design":{},"station":{},"backsight":{},"heightText":{},"bs":{},"fs":{},"peepSight":{},"instruction":{},"instructionResult":{}}}"#,
         points.join(","),
         point(&o.design),
         jopt_usize(o.station),
@@ -435,7 +451,9 @@ fn ui_json(u: &UiState) -> String {
         jopt_str(&o.height_text),
         bs,
         fs,
-        o.peep_sight
+        o.peep_sight,
+        instruction,
+        instruction_result
     );
     let mode = match u.mode {
         Mode::Textbook => "textbook",
@@ -520,7 +538,7 @@ impl Sim {
         ui_json(&self.inner.ui_state())
     }
 
-    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評、2＝いまの状態、3＝FS座標の計算
+    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評、2＝いまの状態、3＝FS座標の計算、4＝現場の指示
     #[wasm_bindgen(js_name = aiFactsJson)]
     pub fn ai_facts_json(&self, kind: u32) -> String {
         fact_kind(kind)

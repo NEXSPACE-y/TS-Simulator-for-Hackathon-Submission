@@ -5,13 +5,18 @@ import { useCallback, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
 import { dmsCircleAt, dmsSignedAt, fixed, flag } from '../bridge/format';
 import { AiExplain } from './AiExplain';
+import { AiInstruction, InstructionResultBox } from './AiInstruction';
 import { DirPad, HoldButton, Section, SpeedSelector } from './controls';
 import { setText, useFrame, useSim, useUi } from './hooks';
 
 export function ObservationPanel() {
   const ui = useUi();
-  if (ui.currentStep === 8) return <PlaneTable />;
-  return <Telescope />;
+  return (
+    <>
+      <InstructionResultBox />
+      {ui.currentStep === 8 ? <PlaneTable /> : <Telescope />}
+    </>
+  );
 }
 
 function PlaneTable() {
@@ -30,66 +35,69 @@ function PlaneTable() {
   const heightValue = Number(height);
   const canSet = backsight >= 0 && station !== backsight && height.trim() !== '' && Number.isFinite(heightValue);
   return (
-    <div className="tablet">
-      <div className="tablet-title">電子平板</div>
-      <label className="field">
-        <span>機械点</span>
-        <select value={station} onChange={(e) => setStation(Number(e.target.value))}>
-          {o.points.map((p, i) => (
-            <option key={p.name} value={i}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>BS点</span>
-        <select value={backsight} onChange={(e) => setBacksight(Number(e.target.value))}>
-          <option value={-1}>選んでください</option>
-          {o.points.map((p, i) => (
-            <option key={p.name} value={i}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>器械高 (m)</span>
-        <input inputMode="decimal" value={height} placeholder="例 1.500" onChange={(e) => setHeight(e.target.value)} />
-        <button type="button" onClick={() => setHeight(fixed(measured.current, 3))}>
-          巻尺で測る
-        </button>
-      </label>
-      <table className="points">
-        <thead>
-          <tr>
-            <th>点名</th>
-            <th>X (m)</th>
-            <th>Y (m)</th>
-            <th>H (m)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {o.points.map((p) => (
-            <tr key={p.name}>
-              <td>{p.name}</td>
-              <td>{p.x}</td>
-              <td>{p.y}</td>
-              <td>{p.h}</td>
+    <>
+      <AiInstruction />
+      <div className="tablet">
+        <div className="tablet-title">電子平板</div>
+        <label className="field">
+          <span>機械点</span>
+          <select value={station} onChange={(e) => setStation(Number(e.target.value))}>
+            {o.points.map((p, i) => (
+              <option key={p.name} value={i}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>BS点</span>
+          <select value={backsight} onChange={(e) => setBacksight(Number(e.target.value))}>
+            <option value={-1}>選んでください</option>
+            {o.points.map((p, i) => (
+              <option key={p.name} value={i}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>器械高 (m)</span>
+          <input inputMode="decimal" value={height} placeholder="例 1.500" onChange={(e) => setHeight(e.target.value)} />
+          <button type="button" onClick={() => setHeight(fixed(measured.current, 3))}>
+            巻尺で測る
+          </button>
+        </label>
+        <table className="points">
+          <thead>
+            <tr>
+              <th>点名</th>
+              <th>X (m)</th>
+              <th>Y (m)</th>
+              <th>H (m)</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="note">据えた測点を機械点に、ターゲットが立っている点をBS点に選びます（3Dのターゲットを確認）。</p>
-      <button
-        type="button"
-        className="primary"
-        disabled={!canSet}
-        onClick={() => bridge.send('setStation', station, backsight, heightValue)}
-      >
-        セット
-      </button>
-    </div>
+          </thead>
+          <tbody>
+            {o.points.map((p) => (
+              <tr key={p.name}>
+                <td>{p.name}</td>
+                <td>{p.x}</td>
+                <td>{p.y}</td>
+                <td>{p.h}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="note">据えた測点を機械点に、ターゲットが立っている点をBS点に選びます（3Dのターゲットを確認）。</p>
+        <button
+          type="button"
+          className="primary"
+          disabled={!canSet}
+          onClick={() => bridge.send('setStation', station, backsight, heightValue)}
+        >
+          セット
+        </button>
+      </div>
+    </>
   );
 }
 

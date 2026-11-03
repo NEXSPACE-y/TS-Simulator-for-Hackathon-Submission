@@ -261,3 +261,7 @@ pub const HINT_PLACE_MM: f64 = 30.0;
 pub const HINT_ROUGH_CENTER_MM: f64 = 3.0;
 /// 次の操作の目安：望遠鏡の視野から遠いとみなす視準のずれ [秒]（照準器を使う目安）
 pub const HINT_ROUGH_SIGHT_SEC: f64 = 1800.0;
+/// 現場の指示の聞き取り：巻尺で測った値と入力した器械高の差がこれ以内なら「指示どおり」[mm]（仮）
+pub const INSTRUCTION_HEIGHT_TOL_MM: f64 = 2.0;
+/// 次の操作の目安：踏み込む前は、目標（脚頭の位置・傾き）のこの割合の内側を狙う（教科書モード手順1）
+pub const HINT_MARGIN: f64 = 0.5;

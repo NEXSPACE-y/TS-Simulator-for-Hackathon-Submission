@@ -1033,6 +1033,50 @@ button.complete {
   color: var(--muted);
 }
 
+.senpai-fallback {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.instruction,
+.instruction-result {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.instruction-head {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.instruction .button-row {
+  margin: 6px 0 0;
+}
+
+.instruction-result.is-ok {
+  border-color: var(--ok);
+}
+
+.instruction-result.is-ok .instruction-head {
+  color: var(--ok);
+}
+
+.instruction-result.is-ng {
+  border-color: var(--warn);
+}
+
+.instruction-result.is-ng .instruction-head {
+  color: var(--warn);
+}
+
+.instruction-result ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
 .ai-drawer {
   position: fixed;
   top: 64px;

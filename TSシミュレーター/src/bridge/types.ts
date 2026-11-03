@@ -18,7 +18,8 @@ export type CommandName =
   | 'observe'
   | 'turnFocus'
   | 'turnEyepiece'
-  | 'setPeepSight';
+  | 'setPeepSight'
+  | 'requestInstruction';
 
 export interface StepView {
   no: number;
@@ -90,6 +91,10 @@ export interface ObservationView {
   fs: ForesightView | null;
   /** 照準器でのぞいているか（false＝望遠鏡） */
   peepSight: boolean;
+  /** 現場の指示の聞き取り（練習）。id は指示を頼むたびに変わる。fallback＝AIが使えないときの言い方 */
+  instruction: { id: number; fallback: string } | null;
+  /** 指示どおりにセットできたか */
+  instructionResult: { ok: boolean; items: string[] } | null;
 }
 
 export interface UiState {

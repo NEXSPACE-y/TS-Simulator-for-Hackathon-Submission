@@ -116,6 +116,8 @@ pub enum Command {
     },
     /// 観測（手順9＝BS、手順10＝FS）
     Observe,
+    /// 現場の指示を出してもらう（聞き取りの練習）
+    RequestInstruction,
 }
 
 /// 操作の種類（教科書モードの「手順外」の判定、現場モードの完了済みの記録に使う）
@@ -404,6 +406,34 @@ pub struct Observation {
     pub eyepiece_dpt: f64,
     /// のぞく人の目に合う接眼レンズの位置 [ディオプター]
     pub eye_dpt: f64,
+    /// 現場の指示の聞き取り（練習）：先輩が出した指示
+    pub instruction: Option<Instruction>,
+    /// 指示どおりにセットできたか（電子平板の「セット」のあと）
+    pub instruction_result: Option<InstructionResult>,
+}
+
+/// 現場の指示（聞き取りの練習）。言い回しはAIが作り、正解と判定はコアが持つ
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Instruction {
+    pub id: u32,
+    pub station: usize,
+    pub backsight: usize,
+    /// 言い回しの番号（1〜）
+    pub style: u8,
+}
+
+/// 指示どおりにセットできたか
+#[derive(Clone, Debug, PartialEq)]
+pub struct InstructionResult {
+    pub ok: bool,
+    pub items: Vec<String>,
+}
+
+/// 指示の表示用（AIが使えないときの決まった言い方つき）
+#[derive(Clone, Debug, PartialEq)]
+pub struct InstructionView {
+    pub id: u32,
+    pub fallback: String,
 }
 
 /// 望遠鏡のピントと十字線の見え方（毎フレーム。手順9・10）
@@ -547,6 +577,8 @@ pub struct ObservationView {
     pub fs: Option<ForesightView>,
     /// 照準器でのぞいているか（false＝望遠鏡）
     pub peep_sight: bool,
+    pub instruction: Option<InstructionView>,
+    pub instruction_result: Option<InstructionResult>,
 }
 
 /// 変化の少ない画面の状態（手順・注意・結果など）
@@ -612,6 +644,7 @@ pub struct Simulator {
     frame_ops: Vec<OpKind>,
     frame_screws: [bool; 3],
     frame_refusals: Vec<Refusal>,
+    instruction_seq: u32,
 }
 
 /// AI先輩に渡す事実の種類
@@ -623,6 +656,8 @@ pub enum FactKind {
     Status,
     /// FSの座標の計算（観測の解説）
     Calc,
+    /// 現場の指示（聞き取りの練習）
+    Instruction,
 }
 
 impl Simulator {
@@ -670,6 +705,8 @@ impl Simulator {
                 focus_per_m: 0.0,
                 eyepiece_dpt: 0.0,
                 eye_dpt: 0.0,
+                instruction: None,
+                instruction_result: None,
             },
             obs_rev: 0,
             ui_revision: 1,
@@ -679,6 +716,7 @@ impl Simulator {
             frame_ops: Vec::with_capacity(8),
             frame_screws: [false; 3],
             frame_refusals: Vec::with_capacity(4),
+            instruction_seq: 0,
         };
         sim.ui_sig = sim.signature();
         sim
@@ -803,6 +841,7 @@ impl Simulator {
                 height_m,
             } => self.set_station(station, backsight, height_m * 1000.0),
             Command::Observe => self.observe(),
+            Command::RequestInstruction => self.request_instruction(),
         };
         if let Err(r) = result {
             if self.recording {
@@ -1183,6 +1222,11 @@ impl Simulator {
         {
             return Err(Refusal::HeightOutOfRange);
         }
+        let measured = self.snapshot().instrument_height_mm;
+        self.obs.instruction_result = self
+            .obs
+            .instruction
+            .map(|ins| judge_instruction(&ins, station, backsight, height_mm, measured));
         self.obs.station = Some(station);
         self.obs.backsight = Some(backsight);
         self.obs.instrument_height_mm = Some(height_mm);
@@ -1199,6 +1243,24 @@ impl Simulator {
                 format_m(height_mm)
             ),
         );
+        Ok(())
+    }
+
+    /// 現場の指示を出してもらう（聞き取りの練習）。機械点は据えた点、BS点はターゲットが立っている点
+    pub fn request_instruction(&mut self) -> Result<(), Refusal> {
+        self.ensure_observation()?;
+        self.instruction_seq += 1;
+        let n = coach::INSTRUCTION_STYLES.len();
+        let style = ((self.rng.range(0.0, n as f64)).floor() as usize).min(n - 1) + 1;
+        self.obs.instruction = Some(Instruction {
+            id: self.instruction_seq,
+            station: STATION_INDEX,
+            backsight: BACKSIGHT_INDEX,
+            style: style as u8,
+        });
+        self.obs.instruction_result = None;
+        self.selected_step = 8;
+        self.obs_rev += 1;
         Ok(())
     }
 
@@ -1507,6 +1569,11 @@ impl Simulator {
             backsight: self.obs.backsight,
             height_text: self.obs.instrument_height_mm.map(format_m),
             peep_sight: self.obs.peep_sight,
+            instruction: self.obs.instruction.map(|i| InstructionView {
+                id: i.id,
+                fallback: coach::instruction_fallback(point_name(i.station), point_name(i.backsight)),
+            }),
+            instruction_result: self.obs.instruction_result.clone(),
             bs: self.obs.bs.map(|b| BacksightView {
                 azimuth_text: format_dms_circle(b.azimuth),
                 horizontal_text: format_m(b.horizontal_mm),
@@ -1624,7 +1691,23 @@ impl Simulator {
             FactKind::Review => self.review_facts(),
             FactKind::Status => Some(self.status_facts()),
             FactKind::Calc => self.calc_facts(),
+            FactKind::Instruction => self.instruction_facts(),
         }
+    }
+
+    /// 現場の指示（言い回しはAIに任せ、点名はコアが決める）
+    fn instruction_facts(&self) -> Option<Vec<Fact>> {
+        let ins = self.obs.instruction?;
+        Some(vec![
+            fact(
+                "場面",
+                "据付が終わって、新人が電子平板で機械点・BS点・器械高をセットするところ",
+            ),
+            fact("機械点", point_name(ins.station)),
+            fact("BS点", point_name(ins.backsight)),
+            fact("器械高", "新人が巻尺で測って入力する（数字は言わない）"),
+            fact("言い回し", coach::instruction_style(ins.style)),
+        ])
     }
 
     /// FSの座標がどう計算されたか（途中の値もコアで出す。AIは計算しない）
@@ -1906,11 +1989,17 @@ impl Simulator {
         }
     }
 
-    /// 据付の仕上げ：円形気泡 → 電子気泡 → 求心 → 定心桿 → 据付完了
+    /// 据付の仕上げ：円形気泡 → （定心桿を緩めていれば、ずらし終えて締める）→ 電子気泡 → 求心 → 据付完了
     fn finish_action(&self, s: &Snapshot) -> String {
         if s.circular.map(|c| !c.in_circle).unwrap_or(false) {
             return coach::leg_hint(&self.tripod, &self.inst)
                 .unwrap_or_else(|| "脚の伸縮で、円形気泡を中心の円に入れる".into());
+        }
+        if !s.clamp_tight {
+            return match s.centering {
+                Some(c) if !s.centering_ok => coach::slide_hint(c, false),
+                _ => "定心桿を締める".into(),
+            };
         }
         if !s.electronic.map(|e| e.ok).unwrap_or(false) {
             return coach::level_hint(&self.inst, &self.tripod.head)
@@ -1918,11 +2007,8 @@ impl Simulator {
         }
         if !s.centering_ok {
             if let Some(c) = s.centering {
-                return coach::slide_hint(c, s.clamp_tight);
+                return coach::slide_hint(c, true);
             }
-        }
-        if !s.clamp_tight {
-            return "定心桿を締める".into();
         }
         "求心と電子気泡の両方が許容に入ったので「据付完了」を押す".into()
     }
@@ -1966,14 +2052,16 @@ impl Simulator {
         match self.guided_step {
             1 => {
                 let all = s.planted.iter().all(|p| *p);
-                if !all && s.head_offset_mm > TEXTBOOK_ROUGH_CENTER_MM {
+                // 踏み込むと少し動くので、踏み込む前は目標より内側を狙う
+                let m = if all { 1.0 } else { HINT_MARGIN };
+                if !all && s.head_offset_mm > TEXTBOOK_ROUGH_CENTER_MM * HINT_MARGIN {
                     let c = s.head_center;
                     format!(
                         "三脚を{}へ約{:.0} mm運んで、脚頭の中心を測点の真上に近づける",
                         coach::direction_words([-c.x, -c.y]),
                         s.head_offset_mm
                     )
-                } else if s.head_tilt_deg > TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI {
+                } else if s.head_tilt_deg > TEXTBOOK_ROUGH_HEAD_TILT * 180.0 / PI * m {
                     coach::leg_hint(&self.tripod, &self.inst)
                         .unwrap_or_else(|| "脚の伸縮で、脚頭をだいたい水平にする".into())
                 } else if !all {
@@ -2109,6 +2197,55 @@ impl Simulator {
             self.ui_revision += 1;
         }
     }
+}
+
+fn point_name(i: usize) -> &'static str {
+    KNOWN_POINTS.get(i).map(|p| p.name).unwrap_or("?")
+}
+
+/// 指示どおりにセットできたか（器械高は、巻尺で測った値との差で見る）
+fn judge_instruction(
+    ins: &Instruction,
+    station: usize,
+    backsight: usize,
+    height_mm: f64,
+    measured_mm: Option<f64>,
+) -> InstructionResult {
+    let mut ok = true;
+    let mut items = Vec::new();
+    for (label, got, want) in [
+        ("機械点", station, ins.station),
+        ("BS点", backsight, ins.backsight),
+    ] {
+        if got == want {
+            items.push(format!("{}：{}（指示どおり）", label, point_name(got)));
+        } else {
+            ok = false;
+            items.push(format!(
+                "{}：{}（指示は{}）",
+                label,
+                point_name(got),
+                point_name(want)
+            ));
+        }
+    }
+    if let Some(m) = measured_mm {
+        if (height_mm - m).abs() <= INSTRUCTION_HEIGHT_TOL_MM {
+            items.push(format!(
+                "器械高：{} m（巻尺で測った値どおり）",
+                format_m(height_mm)
+            ));
+        } else {
+            ok = false;
+            items.push(format!(
+                "器械高：{} m（巻尺で測った値は {} m。{}違う）",
+                format_m(height_mm),
+                format_m(m),
+                format_diff_mm(height_mm - m)
+            ));
+        }
+    }
+    InstructionResult { ok, items }
 }
 
 /// 望遠鏡を動かす向きの言葉（ずれ＝ターゲットが十字線の右・上にあると＋）
