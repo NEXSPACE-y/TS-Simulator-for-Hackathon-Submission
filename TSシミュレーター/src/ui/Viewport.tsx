@@ -1,4 +1,5 @@
-// 中央：3Dビュー。右上に拡大表示（求心／円形気泡／液晶、観測では望遠鏡の視野）、左下に視点切替と拡大表示の出し入れ（SPEC 4章）。
+// 中央：3Dビュー。右上に拡大表示（手順に合わせて求心／円形気泡／液晶のどれか、観測では望遠鏡の視野）、
+// 左下に視点切替と拡大表示の出し入れ（SPEC 4章）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Frame } from '../bridge';
@@ -13,6 +14,16 @@ const VIEWS: { id: ViewName; label: string }[] = [
   { id: 'lcd', label: '液晶' },
 ];
 
+type ZoomName = 'centering' | 'circular' | 'lcd';
+
+/** 手順ごとに出す拡大表示（オーナー確認済み：三脚は鉛直＝求心、脚の伸縮は円形気泡、整準は液晶）。
+ *  現場モード・教科書モードとも、手順1〜3と6は求心、4は円形気泡、5と7は液晶 */
+const ZOOM_BY_STEP: readonly ZoomName[] = ['centering', 'centering', 'centering', 'circular', 'lcd', 'centering', 'lcd'];
+
+function zoomForStep(step: number): ZoomName | null {
+  return ZOOM_BY_STEP[step - 1] ?? null;
+}
+
 export function Viewport(props: { quality: Quality }) {
   const { bridge } = useSim();
   const ui = useUi();
@@ -21,8 +32,9 @@ export function Viewport(props: { quality: Quality }) {
   const engine = useRef<Engine | null>(null);
   const [view, setViewState] = useState<ViewName>('overview');
   const viewRef = useRef<ViewName>('overview');
-  // 拡大表示（求心・円形気泡・液晶）を出すか。スマホでは三脚が隠れるので、隠せるようにする
+  // 拡大表示を出すか。スマホでは三脚が隠れるので、隠せるようにする
   const [zoomsShown, setZoomsShown] = useState(true);
+  const zoom = zoomForStep(ui.currentStep);
   const [error, setError] = useState<string | null>(null);
   const changeView = useCallback((v: ViewName) => {
     viewRef.current = v;
@@ -61,7 +73,7 @@ export function Viewport(props: { quality: Quality }) {
     <div className="viewport">
       <div className="three-host" ref={host} />
       {error && <div className="view-error">{error}</div>}
-      {ui.phase !== 'observation' && zoomsShown && <ZoomPanels />}
+      {ui.phase !== 'observation' && zoomsShown && zoom && <ZoomPanels show={zoom} />}
       {observing && <TelescopeOverlay ref={scope} peep={ui.observation.peepSight} />}
       <div className="view-switch" role="group" aria-label="視点切替">
         {VIEWS.map((v) => (
@@ -74,12 +86,12 @@ export function Viewport(props: { quality: Quality }) {
             {v.label}
           </button>
         ))}
-        {ui.phase !== 'observation' && (
+        {ui.phase !== 'observation' && zoom && (
           <button
             type="button"
             className={`view-toggle ${zoomsShown ? 'is-on' : ''}`}
             aria-pressed={zoomsShown}
-            title="求心・円形気泡・液晶の拡大表示を出す／隠す"
+            title="拡大表示を出す／隠す"
             onClick={() => setZoomsShown(!zoomsShown)}
           >
             拡大
@@ -94,7 +106,8 @@ export function Viewport(props: { quality: Quality }) {
 const PX_PER_MM = 8;
 const ZOOM_R = 56;
 
-function ZoomPanels() {
+function ZoomPanels(props: { show: ZoomName }) {
+  const { show } = props;
   const { bridge } = useSim();
   const cfg = bridge.config;
   const laser = useRef<SVGCircleElement>(null);
@@ -150,43 +163,49 @@ function ZoomPanels() {
   const tolR = cfg.centeringToleranceMm * PX_PER_MM;
   return (
     <div className="zooms">
-      <figure className="zoom">
-        <figcaption>求心（上＝奥）</figcaption>
-        <svg viewBox="-64 -64 128 140" aria-label="レーザー求心の拡大">
-          <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
-          {[1, 2, 3, 4, 5, 6, 7].map((mm) => (
-            <circle key={mm} r={mm * PX_PER_MM} className={mm % 5 === 0 ? 'z-grid strong' : 'z-grid'} />
-          ))}
-          <circle r="12" className="z-mark" />
-          <line x1="-12" y1="0" x2="12" y2="0" className="z-cross" />
-          <line x1="0" y1="-12" x2="0" y2="12" className="z-cross" />
-          <circle r={tolR} className="z-tol" />
-          <circle ref={laser} r="2.6" className="z-laser" />
-          <text ref={centText} x="0" y="74" className="z-text" />
-        </svg>
-      </figure>
-      <figure className="zoom">
-        <figcaption>円形気泡</figcaption>
-        <svg viewBox="-64 -64 128 140" aria-label="円形気泡の拡大">
-          <circle r="54" className="c-vial" />
-          <circle r={cfg.circularInRatio * 40 + 10} className="c-ring" />
-          <circle ref={bubble} r="10" className="c-bubble" />
-          <text x="0" y="74" className="z-text small">中心の円に入れば合格</text>
-        </svg>
-      </figure>
-      <figure className="zoom">
-        <figcaption>液晶（電子気泡）</figcaption>
-        <svg viewBox="-64 -64 128 156" aria-label="液晶の電子気泡の拡大">
-          <rect x="-64" y="-64" width="128" height="156" rx="6" className="l-bg" />
-          <circle r="50" className="l-line" />
-          <circle r={Math.max(2, cfg.lcdInnerRatio * 50)} className="l-line" />
-          <line x1="-50" y1="0" x2="50" y2="0" className="l-thin" />
-          <line x1="0" y1="-50" x2="0" y2="50" className="l-thin" />
-          <circle ref={dot} r="3.5" className="l-dot" />
-          <text ref={xText} x="-56" y="68" className="l-text" />
-          <text ref={yText} x="-56" y="86" className="l-text" />
-        </svg>
-      </figure>
+      {show === 'centering' && (
+        <figure className="zoom">
+          <figcaption>求心（上＝奥）</figcaption>
+          <svg viewBox="-64 -64 128 140" aria-label="レーザー求心の拡大">
+            <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
+            {[1, 2, 3, 4, 5, 6, 7].map((mm) => (
+              <circle key={mm} r={mm * PX_PER_MM} className={mm % 5 === 0 ? 'z-grid strong' : 'z-grid'} />
+            ))}
+            <circle r="12" className="z-mark" />
+            <line x1="-12" y1="0" x2="12" y2="0" className="z-cross" />
+            <line x1="0" y1="-12" x2="0" y2="12" className="z-cross" />
+            <circle r={tolR} className="z-tol" />
+            <circle ref={laser} r="2.6" className="z-laser" />
+            <text ref={centText} x="0" y="74" className="z-text" />
+          </svg>
+        </figure>
+      )}
+      {show === 'circular' && (
+        <figure className="zoom">
+          <figcaption>円形気泡</figcaption>
+          <svg viewBox="-64 -64 128 140" aria-label="円形気泡の拡大">
+            <circle r="54" className="c-vial" />
+            <circle r={cfg.circularInRatio * 40 + 10} className="c-ring" />
+            <circle ref={bubble} r="10" className="c-bubble" />
+            <text x="0" y="74" className="z-text small">中心の円に入れば合格</text>
+          </svg>
+        </figure>
+      )}
+      {show === 'lcd' && (
+        <figure className="zoom">
+          <figcaption>液晶（電子気泡）</figcaption>
+          <svg viewBox="-64 -64 128 156" aria-label="液晶の電子気泡の拡大">
+            <rect x="-64" y="-64" width="128" height="156" rx="6" className="l-bg" />
+            <circle r="50" className="l-line" />
+            <circle r={Math.max(2, cfg.lcdInnerRatio * 50)} className="l-line" />
+            <line x1="-50" y1="0" x2="50" y2="0" className="l-thin" />
+            <line x1="0" y1="-50" x2="0" y2="50" className="l-thin" />
+            <circle ref={dot} r="3.5" className="l-dot" />
+            <text ref={xText} x="-56" y="68" className="l-text" />
+            <text ref={yText} x="-56" y="86" className="l-text" />
+          </svg>
+        </figure>
+      )}
     </div>
   );
 }
