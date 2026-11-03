@@ -8,6 +8,7 @@ import { AiExplain } from './AiExplain';
 import { AiInstruction, InstructionResultBox } from './AiInstruction';
 import { DirPad, HoldButton, Section, SpeedSelector } from './controls';
 import { setText, useFrame, useSim, useUi } from './hooks';
+import { useT } from './i18n';
 
 export function ObservationPanel() {
   const ui = useUi();
@@ -21,6 +22,7 @@ export function ObservationPanel() {
 
 function PlaneTable() {
   const ui = useUi();
+  const t = useT();
   const { bridge } = useSim();
   const o = ui.observation;
   const [station, setStation] = useState<number>(o.station ?? 0);
@@ -38,9 +40,9 @@ function PlaneTable() {
     <>
       <AiInstruction />
       <div className="tablet">
-        <div className="tablet-title">電子平板</div>
+        <div className="tablet-title">{t.tablet}</div>
         <label className="field">
-          <span>機械点</span>
+          <span>{t.station}</span>
           <select value={station} onChange={(e) => setStation(Number(e.target.value))}>
             {o.points.map((p, i) => (
               <option key={p.name} value={i}>
@@ -50,9 +52,9 @@ function PlaneTable() {
           </select>
         </label>
         <label className="field">
-          <span>BS点</span>
+          <span>{t.backsight}</span>
           <select value={backsight} onChange={(e) => setBacksight(Number(e.target.value))}>
-            <option value={-1}>選んでください</option>
+            <option value={-1}>{t.choose}</option>
             {o.points.map((p, i) => (
               <option key={p.name} value={i}>
                 {p.name}
@@ -61,16 +63,16 @@ function PlaneTable() {
           </select>
         </label>
         <label className="field">
-          <span>器械高 (m)</span>
-          <input inputMode="decimal" value={height} placeholder="例 1.500" onChange={(e) => setHeight(e.target.value)} />
+          <span>{t.instHeight}</span>
+          <input inputMode="decimal" value={height} placeholder={t.heightPlaceholder} onChange={(e) => setHeight(e.target.value)} />
           <button type="button" onClick={() => setHeight(fixed(measured.current, 3))}>
-            巻尺で測る
+            {t.measureTape}
           </button>
         </label>
         <table className="points">
           <thead>
             <tr>
-              <th>点名</th>
+              <th>{t.pointName}</th>
               <th>X (m)</th>
               <th>Y (m)</th>
               <th>H (m)</th>
@@ -87,14 +89,14 @@ function PlaneTable() {
             ))}
           </tbody>
         </table>
-        <p className="note">据えた測点を機械点に、ターゲットが立っている点をBS点に選びます（3Dのターゲットを確認）。</p>
+        <p className="note">{t.tabletNote}</p>
         <button
           type="button"
           className="primary"
           disabled={!canSet}
           onClick={() => bridge.send('setStation', station, backsight, heightValue)}
         >
-          セット
+          {t.set}
         </button>
       </div>
     </>
@@ -103,6 +105,7 @@ function PlaneTable() {
 
 function Telescope() {
   const ui = useUi();
+  const t = useT();
   const { bridge } = useSim();
   const ha = useRef<HTMLSpanElement>(null);
   const va = useRef<HTMLSpanElement>(null);
@@ -118,22 +121,22 @@ function Telescope() {
       setText(dh.current, dmsSignedAt(f, f.o.sightDhDms));
       setText(dv.current, dmsSignedAt(f, f.o.sightDvDms));
       const good = flag(f, f.o.sightOk);
-      setText(ok.current, good ? '視準OK' : '視準を合わせる');
+      setText(ok.current, good ? t.sightOk : t.sightAdjust);
       ok.current?.classList.toggle('is-ok', good);
       const rOk = flag(f, f.o.reticleOk);
-      setText(reticle.current, rOk ? 'くっきり' : 'ぼやけている');
+      setText(reticle.current, rOk ? t.sharp : t.blurry);
       reticle.current?.classList.toggle('is-ok', rOk);
       const fOk = flag(f, f.o.focusOk);
-      setText(focus.current, fOk ? '合っている' : '合っていない');
+      setText(focus.current, fOk ? t.inFocus : t.outOfFocus);
       focus.current?.classList.toggle('is-ok', fOk);
-    }, []),
+    }, [t]),
   );
   const o = ui.observation;
-  const target = ui.currentStep === 9 ? 'BS（ターゲット板）' : 'FS（プリズム）';
+  const target = ui.currentStep === 9 ? t.targetBs : t.targetFs;
   return (
     <>
-      <Section title="のぞく">
-        <div className="seg" role="radiogroup" aria-label="のぞく">
+      <Section title={t.look}>
+        <div className="seg" role="radiogroup" aria-label={t.look}>
           <button
             type="button"
             role="radio"
@@ -141,7 +144,7 @@ function Telescope() {
             className={o.peepSight ? 'is-on' : ''}
             onClick={() => bridge.send('setPeepSight', 1)}
           >
-            照準器
+            {t.peepSight}
           </button>
           <button
             type="button"
@@ -150,87 +153,80 @@ function Telescope() {
             className={o.peepSight ? '' : 'is-on'}
             onClick={() => bridge.send('setPeepSight', 0)}
           >
-            望遠鏡
+            {t.telescope}
           </button>
         </div>
-        <p className="note">
-          {o.peepSight
-            ? '照準器で目標を大まかに捉えたら、望遠鏡に切り替えます（Pキー）。照準器では測量できません。'
-            : '望遠鏡の視野は狭いので、目標が見つからないときは照準器で大まかに向けます（Pキー）。'}
-        </p>
+        <p className="note">{o.peepSight ? t.peepNote : t.teleNote}</p>
       </Section>
-      <Section title="接眼レンズ（十字線）">
+      <Section title={t.eyepieceTitle}>
         <div className="readout">
           <div>
-            十字線 <span className="sight" ref={reticle} />
+            {t.crosshair} <span className="sight" ref={reticle} />
           </div>
         </div>
         <div className="pair-row">
-          <HoldButton intent={{ kind: 'eyepiece', dir: -1 }} title="Vキー">
-            左に回す
+          <HoldButton intent={{ kind: 'eyepiece', dir: -1 }} title={t.keyTitle('V')}>
+            {t.turnLeft}
           </HoldButton>
-          <HoldButton intent={{ kind: 'eyepiece', dir: 1 }} title="Bキー">
-            右に回す
+          <HoldButton intent={{ kind: 'eyepiece', dir: 1 }} title={t.keyTitle('B')}>
+            {t.turnRight}
           </HoldButton>
         </div>
       </Section>
-      <Section title="合焦つまみ（ピント）">
+      <Section title={t.focusTitle}>
         <div className="readout">
           <div>
-            ピント <span className="sight" ref={focus} />
+            {t.focus} <span className="sight" ref={focus} />
           </div>
         </div>
         <div className="pair-row">
-          <HoldButton intent={{ kind: 'focus', dir: 1 }} title="Fキー">
-            近くへ
+          <HoldButton intent={{ kind: 'focus', dir: 1 }} title={t.keyTitle('F')}>
+            {t.near}
           </HoldButton>
-          <HoldButton intent={{ kind: 'focus', dir: -1 }} title="Gキー">
-            遠くへ
+          <HoldButton intent={{ kind: 'focus', dir: -1 }} title={t.keyTitle('G')}>
+            {t.far}
           </HoldButton>
         </div>
-        <p className="note">十字線は接眼レンズで、ターゲットのぼけは合焦つまみで直します。どちらかがぼけていると測量できません。</p>
+        <p className="note">{t.focusNote}</p>
       </Section>
-      <Section title={`望遠鏡：${target}を視準`}>
+      <Section title={t.sightTitle(target)}>
         <div className="readout">
           <div>
-            水平角 HA <span ref={ha} />
+            {t.ha} <span ref={ha} />
           </div>
           <div>
-            鉛直角 VA <span ref={va} />
+            {t.va} <span ref={va} />
           </div>
           <div>
-            十字線とのずれ 水平 <span ref={dh} /> ／ 鉛直 <span ref={dv} />
+            {t.offsetH} <span ref={dh} /> {t.offsetV} <span ref={dv} />
           </div>
           <div>
             <span className="sight" ref={ok} />
           </div>
         </div>
-        <SpeedSelector labels={['粗動', '中', '微動']} />
-        <DirPad
-          make={(dx, dy) => ({ kind: 'telescope', dh: dx, dv: dy })}
-          labels={{ up: '上へ', down: '下へ', left: '左へ', right: '右へ' }}
-        />
-        <p className="note">右上の視野で、十字線をターゲットの中心に合わせます。Enterキーでも測量できます。</p>
+        <SpeedSelector labels={t.teleSpeedLabels} />
+        <DirPad make={(dx, dy) => ({ kind: 'telescope', dh: dx, dv: dy })} labels={t.teleDir} />
+        <p className="note">{t.teleNote2}</p>
         <button type="button" className="primary" onClick={() => bridge.send('observe')}>
-          測量
+          {t.measure}
         </button>
       </Section>
       {o.bs && (
-        <Section title="BSの観測（方向角の基準）">
+        <Section title={t.bsTitle}>
           <dl className="result">
-            <dt>方向角</dt>
+            <dt>{t.bearing}</dt>
             <dd>{o.bs.azimuthText}</dd>
-            <dt>水平距離（観測）</dt>
+            <dt>{t.hdObserved}</dt>
             <dd>{o.bs.horizontalText} m</dd>
-            <dt>水平距離（座標から）</dt>
+            <dt>{t.hdCoord}</dt>
             <dd>{o.bs.coordDistanceText} m</dd>
-            <dt>較差</dt>
+            <dt>{t.distanceDiff}</dt>
             <dd>{o.bs.distanceDiffText}</dd>
           </dl>
         </Section>
       )}
       {o.fs && (
-        <Section title={`FSの観測結果（設計点 ${o.design.name}）`}>
+        <Section title={t.fsTitle(o.design.name)}>
           <table className="points">
             <thead>
               <tr>
@@ -242,28 +238,26 @@ function Telescope() {
             </thead>
             <tbody>
               <tr>
-                <td>観測</td>
+                <td>{t.observed}</td>
                 <td>{o.fs.xText}</td>
                 <td>{o.fs.yText}</td>
                 <td>{o.fs.hText}</td>
               </tr>
               <tr>
-                <td>設計</td>
+                <td>{t.design}</td>
                 <td>{o.design.x}</td>
                 <td>{o.design.y}</td>
                 <td>{o.design.h}</td>
               </tr>
               <tr className="diff">
-                <td>差</td>
+                <td>{t.diff}</td>
                 <td>{o.fs.dxText}</td>
                 <td>{o.fs.dyText}</td>
                 <td>{o.fs.dhText}</td>
               </tr>
             </tbody>
           </table>
-          <p className="note">
-            方向角 {o.fs.azimuthText}・水平距離 {o.fs.horizontalText} m
-          </p>
+          <p className="note">{t.fsNote(o.fs.azimuthText, o.fs.horizontalText)}</p>
           {/* 測り直したら説明も聞き直せるよう、結果が変わったら作り直す */}
           <AiExplain key={`${o.fs.xText}/${o.fs.yText}/${o.fs.hText}`} />
         </Section>

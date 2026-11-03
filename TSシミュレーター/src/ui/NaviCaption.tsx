@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AiFact } from '../bridge';
 import { askSenpai } from '../ai/client';
 import { useSim, useUi } from './hooks';
+import { useT, type Lang } from './i18n';
 import { speak, stopSpeech } from './speech';
 
 const VOICE_KEY = 'ts-sim-navi-voice';
@@ -30,6 +31,7 @@ function saveVoice(on: boolean): void {
 
 interface Cue {
   id: number;
+  lang: Lang;
   speech: string;
   ai: boolean;
   facts: AiFact[] | null;
@@ -41,7 +43,7 @@ async function resolveText(cue: Cue): Promise<string> {
   const ctl = new AbortController();
   const t = window.setTimeout(() => ctl.abort(), NAVI_AI_TIMEOUT_MS);
   try {
-    const r = await askSenpai('navi', cue.facts, undefined, ctl.signal);
+    const r = await askSenpai('navi', cue.facts, undefined, ctl.signal, cue.lang);
     return r.ok ? r.text : cue.speech;
   } finally {
     window.clearTimeout(t);
@@ -50,6 +52,7 @@ async function resolveText(cue: Cue): Promise<string> {
 
 export function NaviCaption() {
   const ui = useUi();
+  const t = useT();
   const { bridge } = useSim();
   const [text, setText] = useState('');
   const [voice, setVoice] = useState(loadVoice);
@@ -75,12 +78,18 @@ export function NaviCaption() {
     if (!active || id === 0 || !ui.navi || handled.current === id) return;
     handled.current = id;
     // 事実は、きっかけが出た時点のものを、すぐに受け取っておく
-    const cue: Cue = { id, speech: ui.navi.speech, ai: ui.navi.ai, facts: ui.navi.ai ? bridge.aiFacts('navi') : null };
+    const cue: Cue = {
+      id,
+      lang: ui.lang,
+      speech: ui.navi.speech,
+      ai: ui.navi.ai,
+      facts: ui.navi.ai ? bridge.aiFacts('navi') : null,
+    };
     chain.current = chain.current.then(async () => {
-      const t = await resolveText(cue);
+      const said = await resolveText(cue);
       if (!alive.current) return;
-      setText(t);
-      if (voiceRef.current) speak(t, true);
+      setText(said);
+      if (voiceRef.current) speak(said, cue.lang, true);
     });
     // id が変わったときだけ動かす
   }, [id]);
@@ -93,10 +102,10 @@ export function NaviCaption() {
   return (
     <div className="navi-caption" role="status" aria-live="polite">
       <div className="navi-head">
-        <span className="senpai-label">ナビ</span>
+        <span className="senpai-label">{t.navi}</span>
         <span className="navi-actions">
-          <button type="button" className="ghost" onClick={() => speak(text)} disabled={!voice}>
-            もう一度
+          <button type="button" className="ghost" onClick={() => speak(text, ui.lang)} disabled={!voice}>
+            {t.replay}
           </button>
           <button
             type="button"
@@ -109,7 +118,7 @@ export function NaviCaption() {
               if (!on) stopSpeech();
             }}
           >
-            声：{voice ? 'ON' : 'OFF'}
+            {t.voice(voice)}
           </button>
         </span>
       </div>

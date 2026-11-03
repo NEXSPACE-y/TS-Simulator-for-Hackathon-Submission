@@ -18,7 +18,7 @@ async function start(): Promise<void> {
       </StrictMode>,
     );
   } catch (e) {
-    root.textContent = `読み込みに失敗しました：${String(e)}`;
+    root.textContent = `読み込みに失敗しました / Failed to load: ${String(e)}`;
   }
 }
 

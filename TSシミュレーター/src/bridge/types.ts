@@ -98,6 +98,8 @@ export interface ObservationView {
 }
 
 export interface UiState {
+  /** 画面に出す文の言語（コアの文もこの言語で来る） */
+  lang: 'ja' | 'en';
   mode: 'textbook' | 'field';
   phase: 'setup' | 'setupResult' | 'observation';
   currentStep: number;

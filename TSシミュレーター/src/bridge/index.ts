@@ -108,6 +108,10 @@ export type AiFactKind = keyof typeof AI_FACT_CODES;
 export const ModeId = { Textbook: 0, Field: 1 } as const;
 export type ModeId = (typeof ModeId)[keyof typeof ModeId];
 
+/** 画面に出す文の言語：0＝日本語、1＝英語 */
+export const LangId = { Ja: 0, En: 1 } as const;
+export type LangId = (typeof LangId)[keyof typeof LangId];
+
 function parseLayout(): { offsets: Offsets; length: number } {
   const items = JSON.parse(frameLayoutJson()) as { name: string; offset: number; length: number }[];
   const map = new Map(items.map((i) => [i.name, i]));
@@ -139,6 +143,7 @@ export class Bridge {
   readonly frameLength: number;
   readonly config: DisplayConfig;
   private modeId: ModeId;
+  private langId: LangId = LangId.Ja;
 
   constructor(mode: ModeId, seed: number) {
     const cc = JSON.parse(commandCodesJson()) as { stride: number; codes: Record<CommandName, number> };
@@ -216,11 +221,20 @@ export class Bridge {
     return () => this.uiListeners.delete(l);
   }
 
+  /** 画面に出す文の言語を変える（やり直しても引き継ぐ） */
+  setLang(lang: LangId): void {
+    this.langId = lang;
+    this.sim.setLang(lang);
+    this.ui = this.readUi();
+    for (const l of this.uiListeners) l(this.ui);
+  }
+
   /** 最初からやり直す */
   restart(mode: ModeId, seed: number): void {
     this.sim.free();
     this.modeId = mode;
     this.sim = new Sim(mode, seed >>> 0);
+    this.sim.setLang(this.langId);
     this.queue = [];
     this.lastRevision = -1;
     this.frameData = this.sim.frame(0, new Float64Array(0));

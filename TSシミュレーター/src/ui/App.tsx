@@ -1,12 +1,13 @@
 // 画面全体の組み立て（上部・左・中央・右・結果画面）
 
 import { useEffect, useMemo, useState } from 'react';
-import { ModeId, type Bridge } from '../bridge';
+import { LangId, ModeId, type Bridge } from '../bridge';
 import type { Quality } from '../render/engine';
 import { AdviceBubble } from './AdviceBubble';
 import { AiDrawer } from './AiDrawer';
 import { DebugLog, isDebugMode } from './DebugLog';
 import { SimContext, useUi } from './hooks';
+import { dict, type Lang } from './i18n';
 import { InputManager } from './input';
 import { NaviCaption } from './NaviCaption';
 import { OperationPanel } from './OperationPanel';
@@ -20,6 +21,31 @@ import { Viewport } from './Viewport';
 
 const QUALITY_KEY = 'ts-sim-quality';
 const ADVICE_KEY = 'ts-sim-advice';
+const LANG_KEY = 'ts-sim-lang';
+
+/** 画面の言語。最初は日本語。選んだ言語はこのブラウザに覚えておく */
+function loadLang(): Lang {
+  try {
+    return window.localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'ja';
+  } catch {
+    return 'ja';
+  }
+}
+
+function saveLang(lang: Lang): void {
+  try {
+    window.localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    // 保存できなくても動作には関係ない
+  }
+}
+
+/** コアに言語を伝え、ページの言語と題名も合わせる */
+function applyLang(bridge: Bridge, lang: Lang): void {
+  bridge.setLang(lang === 'en' ? LangId.En : LangId.Ja);
+  document.documentElement.lang = lang;
+  document.title = dict(lang).appName;
+}
 
 /** 操作中のひとこと（AI先輩）を出すか。最初は出す */
 function loadAdvice(): boolean {
@@ -63,6 +89,11 @@ export function App(props: { bridge: Bridge }) {
   const { bridge } = props;
   const [started, setStarted] = useState(false);
   const [quality, setQuality] = useState<Quality>(loadQuality);
+  const [lang, setLang] = useState<Lang>(() => {
+    const l = loadLang();
+    applyLang(bridge, l);
+    return l;
+  });
   const input = useMemo(
     () =>
       new InputManager(bridge, () => {
@@ -86,6 +117,11 @@ export function App(props: { bridge: Bridge }) {
     setQuality(q);
     saveQuality(q);
   };
+  const changeLang = (l: Lang) => {
+    setLang(l);
+    saveLang(l);
+    applyLang(bridge, l);
+  };
 
   const ctx = useMemo(() => ({ bridge, input }), [bridge, input]);
   // URL に ?debug を付けたときだけ、タッチの記録を画面の隅に出す
@@ -106,9 +142,11 @@ export function App(props: { bridge: Bridge }) {
         <StartScreen
           quality={quality}
           onQuality={changeQuality}
+          lang={lang}
+          onLang={changeLang}
           onStart={(mode) => {
             // 教科書モードのナビを読み上げられるよう、ボタンを押した流れの中で読み上げを使えるようにしておく
-            unlockSpeech();
+            unlockSpeech(lang);
             bridge.restart(mode === 'textbook' ? ModeId.Textbook : ModeId.Field, newSeed());
             setStarted(true);
           }}

@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Bridge, FIELD_NAMES, ModeId, dmsSigned, loadBridge } from '../src/bridge';
+import { Bridge, FIELD_NAMES, LangId, ModeId, dmsSigned, loadBridge } from '../src/bridge';
 
 const wasmPath = fileURLToPath(new URL('../src/bridge/pkg/ts_sim_bg.wasm', import.meta.url));
 
@@ -95,5 +95,22 @@ describe('WASMとのつなぎ目', () => {
     f = bridge.current();
     expect(f.data[f.o.peekValid]).toBe(0);
     expect(f.data[f.o.laserValid]).toBe(1);
+  });
+
+  it('言語を英語にすると、コアの文も英語で届き、やり直しても英語のまま', () => {
+    bridge.restart(ModeId.Field, 5);
+    expect(bridge.getUi().lang).toBe('ja');
+    bridge.setLang(LangId.En);
+    let ui = bridge.getUi();
+    expect(ui.lang).toBe('en');
+    expect(ui.steps[0]?.label).toBe('Set the tripod over the point');
+    bridge.restart(ModeId.Textbook, 5);
+    ui = bridge.getUi();
+    expect(ui.lang).toBe('en');
+    expect(ui.goal?.text).toMatch(/^Press in all three legs/);
+    // AIに渡す事実は日本語のまま（AIには、選んだ言語で答えさせる）
+    expect(bridge.aiFacts('status')?.some((f) => f.k === 'いまの手順')).toBe(true);
+    bridge.setLang(LangId.Ja);
+    expect(bridge.getUi().steps[0]?.label).toBe('三脚を測点の上におおよそ置き、脚頭をだいたい水平に');
   });
 });

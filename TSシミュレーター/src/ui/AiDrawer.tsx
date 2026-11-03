@@ -4,12 +4,13 @@
 import { useState } from 'react';
 import { SenpaiAnswer, useSenpai } from './aiCommon';
 import { useSim } from './hooks';
+import { useT } from './i18n';
 
-const EXAMPLES = ['次は何をすればいい？', '求心ってなに？', 'なんで6と7を繰り返すの？'] as const;
 const MAX_QUESTION = 200;
 
 export function AiDrawer(props: { onClose: () => void; adviceOn: boolean; onAdvice: (on: boolean) => void }) {
   const { bridge } = useSim();
+  const t = useT();
   const { state, run } = useSenpai();
   const [question, setQuestion] = useState('');
   const busy = state.status === 'loading';
@@ -21,16 +22,16 @@ export function AiDrawer(props: { onClose: () => void; adviceOn: boolean; onAdvi
   };
 
   return (
-    <aside className="ai-drawer" aria-label="AI先輩に聞く">
+    <aside className="ai-drawer" aria-label={t.askTitle}>
       <header className="ai-drawer-head">
-        <span className="ai-drawer-title">AI先輩に聞く</span>
+        <span className="ai-drawer-title">{t.askTitle}</span>
         <button type="button" className="ghost" onClick={props.onClose}>
-          閉じる
+          {t.close}
         </button>
       </header>
-      <p className="note">いまの状態を踏まえて答えます（質問は200字まで）。</p>
+      <p className="note">{t.askNote}</p>
       <div className="ai-examples">
-        {EXAMPLES.map((e) => (
+        {t.askExamples.map((e) => (
           <button
             key={e}
             type="button"
@@ -55,18 +56,18 @@ export function AiDrawer(props: { onClose: () => void; adviceOn: boolean; onAdvi
           type="text"
           value={question}
           maxLength={MAX_QUESTION}
-          placeholder="例：円形気泡が入らないときは？"
-          aria-label="AI先輩への質問"
+          placeholder={t.askPlaceholder}
+          aria-label={t.askAria}
           onChange={(e) => setQuestion(e.target.value)}
         />
         <button type="submit" className="primary" disabled={busy || question.trim() === ''}>
-          聞く
+          {t.ask}
         </button>
       </form>
       <SenpaiAnswer state={state} />
       <label className="ai-switch">
         <input type="checkbox" checked={props.adviceOn} onChange={(e) => props.onAdvice(e.target.checked)} />
-        <span>操作中のひとこと（据付の途中で、つまずいたときにAI先輩が声をかける）</span>
+        <span>{t.adviceSwitch}</span>
       </label>
     </aside>
   );

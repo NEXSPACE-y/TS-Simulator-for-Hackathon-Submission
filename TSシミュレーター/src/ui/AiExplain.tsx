@@ -3,9 +3,11 @@
 
 import { SenpaiAnswer, useSenpai } from './aiCommon';
 import { useSim } from './hooks';
+import { useT } from './i18n';
 
 export function AiExplain() {
   const { bridge } = useSim();
+  const t = useT();
   const { state, run } = useSenpai();
   const ask = () => {
     const facts = bridge.aiFacts('calc');
@@ -16,7 +18,7 @@ export function AiExplain() {
     <div className="senpai-box">
       {canAsk && (
         <button type="button" className="senpai-ask" onClick={ask}>
-          {state.status === 'error' ? 'もう一度聞く' : 'AI先輩に計算を説明してもらう'}
+          {state.status === 'error' ? t.askAgain : t.explain}
         </button>
       )}
       <SenpaiAnswer state={state} />

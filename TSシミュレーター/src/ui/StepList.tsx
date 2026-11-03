@@ -1,17 +1,19 @@
 // 左の手順一覧：現在地・完了済み・未着手が一目で分かる表示（SPEC 4章）
 
 import { useSim, useUi } from './hooks';
+import { useT } from './i18n';
 
 export function StepList() {
   const ui = useUi();
+  const t = useT();
   const { bridge } = useSim();
   const selectable = (no: number, locked: boolean) =>
     !locked && ((ui.phase === 'setup' && ui.mode === 'field' && no <= 7) || (ui.phase === 'observation' && no >= 8));
   return (
-    <nav className="steps" aria-label="手順">
+    <nav className="steps" aria-label={t.stepsAria}>
       {[
-        { title: '第1部 据付', items: ui.steps.filter((s) => s.no <= 7) },
-        { title: '第2部 観測', items: ui.steps.filter((s) => s.no >= 8) },
+        { title: t.part1, items: ui.steps.filter((s) => s.no <= 7) },
+        { title: t.part2, items: ui.steps.filter((s) => s.no >= 8) },
       ].map((g) => (
         <div className="step-group" key={g.title}>
           <div className="step-group-title">{g.title}</div>
@@ -41,10 +43,10 @@ export function StepList() {
         </div>
       ))}
       {ui.mode === 'field' && ui.phase === 'setup' && (
-        <p className="steps-note">現場モード：順番は自由です。手順を押すと操作盤が切り替わります。</p>
+        <p className="steps-note">{t.stepsNoteField}</p>
       )}
       {ui.mode === 'textbook' && ui.phase === 'setup' && (
-        <p className="steps-note">教科書モード：一歩ずつ進みます。手順外の操作をすると注意が出ます。</p>
+        <p className="steps-note">{t.stepsNoteTextbook}</p>
       )}
     </nav>
   );

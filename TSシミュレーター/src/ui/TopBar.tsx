@@ -4,6 +4,7 @@ import { useCallback, useRef } from 'react';
 import type { Frame } from '../bridge';
 import { dmsSignedAt, fixed, flag, timeAt } from '../bridge/format';
 import { setText, useFrame, useUi } from './hooks';
+import { useT } from './i18n';
 
 export function TopBar(props: {
   onRestart: () => void;
@@ -13,6 +14,7 @@ export function TopBar(props: {
   onAi: () => void;
 }) {
   const ui = useUi();
+  const t = useT();
   const cent = useRef<HTMLSpanElement>(null);
   const tx = useRef<HTMLSpanElement>(null);
   const ty = useRef<HTMLSpanElement>(null);
@@ -31,28 +33,28 @@ export function TopBar(props: {
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="brand-name">TS実習シミュレーター</span>
-        <span className="brand-mode">{ui.mode === 'textbook' ? '教科書モード' : '現場モード'}</span>
+        <span className="brand-name">{t.appName}</span>
+        <span className="brand-mode">{ui.mode === 'textbook' ? t.textbookMode : t.fieldMode}</span>
       </div>
       <dl className="params">
         <div>
-          <dt>求心ズレ</dt>
+          <dt>{t.paramCentering}</dt>
           <dd ref={cent} />
         </div>
         <div>
-          <dt>電子気泡 X</dt>
+          <dt>{t.paramTiltX}</dt>
           <dd ref={tx} />
         </div>
         <div>
-          <dt>電子気泡 Y</dt>
+          <dt>{t.paramTiltY}</dt>
           <dd ref={ty} />
         </div>
         <div>
-          <dt>タイム</dt>
+          <dt>{t.paramTime}</dt>
           <dd ref={time} />
         </div>
         <div>
-          <dt>ループ回数</dt>
+          <dt>{t.paramLoops}</dt>
           <dd ref={loops} />
         </div>
       </dl>
@@ -62,15 +64,15 @@ export function TopBar(props: {
           className={`ghost ai-toggle ${props.aiOpen ? 'is-on' : ''}`}
           aria-expanded={props.aiOpen}
           onClick={props.onAi}
-          title="AI先輩に質問する"
+          title={t.senpaiTitle}
         >
-          AI先輩
+          {t.senpai}
         </button>
-        <button type="button" className="ghost" onClick={props.onQuality} title="画質の切り替え">
-          画質：{props.quality === 'standard' ? '標準' : '軽量'}
+        <button type="button" className="ghost" onClick={props.onQuality} title={t.qualityTitle}>
+          {t.qualityButton(props.quality === 'light')}
         </button>
         <button type="button" className="ghost" onClick={props.onRestart}>
-          最初から
+          {t.restart}
         </button>
       </div>
     </header>

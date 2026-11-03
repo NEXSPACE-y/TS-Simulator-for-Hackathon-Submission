@@ -816,6 +816,21 @@ fn assert_english(sim: &Simulator, what: &str) {
     }
 }
 
+/// 英語の文が入っても、AIに渡す事実は中継の上限（見出し40字・値240字）に収まる
+fn assert_facts_fit(sim: &Simulator, what: &str) {
+    for kind in [FactKind::Status, FactKind::Advice, FactKind::Navi, FactKind::Instruction, FactKind::Calc] {
+        for f in sim.ai_facts(kind).unwrap_or_default() {
+            assert!(
+                f.key.chars().count() <= 40 && f.value.chars().count() <= 240,
+                "{}：{} = {}",
+                what,
+                f.key,
+                f.value
+            );
+        }
+    }
+}
+
 #[test]
 fn english_screen_has_no_japanese_through_a_whole_run() {
     for mode in [Mode::Field, Mode::Textbook] {
@@ -828,8 +843,11 @@ fn english_screen_has_no_japanese_through_a_whole_run() {
             ja.frame(t, &[]);
             en.frame(t, &[]);
             let mut passed = false;
-            for _ in 0..40_000 {
+            for i in 0..40_000 {
                 assert_english(&en, &format!("{:?} seed {} 据付中", mode, seed));
+                if i % 25 == 0 {
+                    assert_facts_fit(&en, "据付中の事実");
+                }
                 let cmds = commands_for(&ja, &ja.next_action());
                 assert!(!cmds.is_empty(), "操作に直せない次の操作：{}", ja.next_action());
                 t += 50.0;
@@ -861,6 +879,7 @@ fn english_screen_has_no_japanese_through_a_whole_run() {
             aim_and_focus(&mut en, fs);
             assert!(en.observe().is_ok());
             assert_english(&en, "FSのあと");
+            assert_facts_fit(&en, "観測のあとの事実");
         }
     }
 }

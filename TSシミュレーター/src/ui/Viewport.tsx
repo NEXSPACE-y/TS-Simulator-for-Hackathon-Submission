@@ -6,13 +6,9 @@ import type { Frame } from '../bridge';
 import { dmsSignedAt, fixed, flag } from '../bridge/format';
 import { Engine, viewForStep, type Quality, type ViewName } from '../render/engine';
 import { setAttr, setText, useFrame, useSim, useUi } from './hooks';
+import { useT } from './i18n';
 
-const VIEWS: { id: ViewName; label: string }[] = [
-  { id: 'overview', label: '全体' },
-  { id: 'instrument', label: '器械' },
-  { id: 'feet', label: '足元' },
-  { id: 'lcd', label: '液晶' },
-];
+const VIEWS: readonly ViewName[] = ['overview', 'instrument', 'feet', 'lcd'];
 
 type ZoomName = 'centering' | 'circular' | 'lcd';
 
@@ -27,6 +23,7 @@ function zoomForStep(step: number): ZoomName | null {
 export function Viewport(props: { quality: Quality }) {
   const { bridge } = useSim();
   const ui = useUi();
+  const t = useT();
   const host = useRef<HTMLDivElement>(null);
   const scope = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
@@ -51,7 +48,7 @@ export function Viewport(props: { quality: Quality }) {
       e.setTelescopeElement(scope.current);
       engine.current = e;
     } catch (e) {
-      setError(`3Dを表示できませんでした（WebGLが使えない可能性があります）：${String(e)}`);
+      setError(t.webglError(String(e)));
     }
     return () => {
       engine.current?.dispose();
@@ -75,15 +72,10 @@ export function Viewport(props: { quality: Quality }) {
       {error && <div className="view-error">{error}</div>}
       {ui.phase !== 'observation' && zoomsShown && zoom && <ZoomPanels show={zoom} />}
       {observing && <TelescopeOverlay ref={scope} peep={ui.observation.peepSight} />}
-      <div className="view-switch" role="group" aria-label="視点切替">
+      <div className="view-switch" role="group" aria-label={t.viewAria}>
         {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={view === v.id ? 'is-on' : ''}
-            onClick={() => changeView(v.id)}
-          >
-            {v.label}
+          <button key={v} type="button" className={view === v ? 'is-on' : ''} onClick={() => changeView(v)}>
+            {t.views[v]}
           </button>
         ))}
         {ui.phase !== 'observation' && zoom && (
@@ -91,10 +83,10 @@ export function Viewport(props: { quality: Quality }) {
             type="button"
             className={`view-toggle ${zoomsShown ? 'is-on' : ''}`}
             aria-pressed={zoomsShown}
-            title="拡大表示を出す／隠す"
+            title={t.zoomTitle}
             onClick={() => setZoomsShown(!zoomsShown)}
           >
-            拡大
+            {t.zoom}
           </button>
         )}
       </div>
@@ -113,6 +105,7 @@ const HOLE_MASK = `M-64 -64 H64 V64 H-64 Z M${HOLE_R} 0 A${HOLE_R} ${HOLE_R} 0 1
 function ZoomPanels(props: { show: ZoomName }) {
   const { show } = props;
   const { bridge } = useSim();
+  const t = useT();
   const cfg = bridge.config;
   const peekScale = HOLE_R / cfg.headHoleViewMm;
   const caption = useRef<HTMLElement>(null);
@@ -135,14 +128,14 @@ function ZoomPanels(props: { show: ZoomName }) {
       const peeking = flag(f, o.peekValid);
       setAttr(laserView.current, 'display', peeking ? 'none' : 'inline');
       setAttr(peekView.current, 'display', peeking ? 'inline' : 'none');
-      setText(caption.current, peeking ? '脚頭の穴から（上＝奥）' : '求心（上＝奥）');
+      setText(caption.current, peeking ? t.peekCaption : t.centeringCaption);
       if (peeking) {
         const seen = flag(f, o.peekVisible);
         const px = (d[o.peek] ?? 0) * peekScale;
         const py = -(d[o.peek + 1] ?? 0) * peekScale;
         setAttr(peekMark.current, 'transform', `translate(${px.toFixed(2)} ${py.toFixed(2)})`);
         setAttr(peekMark.current, 'display', seen ? 'inline' : 'none');
-        setText(peekText.current, seen ? '目標の円に入れば位置はOK' : '測点が見えない');
+        setText(peekText.current, seen ? t.peekSeen : t.peekNotSeen);
       }
       // 求心：レーザー点と測点（北＝上）
       if (flag(f, o.laserValid)) {
@@ -180,7 +173,7 @@ function ZoomPanels(props: { show: ZoomName }) {
         setText(xText.current, 'X: ---');
         setText(yText.current, 'Y: ---');
       }
-    }, [peekScale]),
+    }, [peekScale, t]),
   );
 
   const tolR = cfg.centeringToleranceMm * PX_PER_MM;
@@ -188,8 +181,8 @@ function ZoomPanels(props: { show: ZoomName }) {
     <div className="zooms">
       {show === 'centering' && (
         <figure className="zoom">
-          <figcaption ref={caption}>求心（上＝奥）</figcaption>
-          <svg viewBox="-64 -64 128 140" aria-label="レーザー求心の拡大">
+          <figcaption ref={caption}>{t.centeringCaption}</figcaption>
+          <svg viewBox="-64 -64 128 140" aria-label={t.centeringAria}>
             <g ref={laserView}>
               <rect x="-64" y="-64" width="128" height="128" className="z-ground" />
               {[1, 2, 3, 4, 5, 6, 7].map((mm) => (
@@ -219,19 +212,21 @@ function ZoomPanels(props: { show: ZoomName }) {
       )}
       {show === 'circular' && (
         <figure className="zoom">
-          <figcaption>円形気泡</figcaption>
-          <svg viewBox="-64 -64 128 140" aria-label="円形気泡の拡大">
+          <figcaption>{t.circularCaption}</figcaption>
+          <svg viewBox="-64 -64 128 140" aria-label={t.circularAria}>
             <circle r="54" className="c-vial" />
             <circle r={cfg.circularInRatio * 40 + 10} className="c-ring" />
             <circle ref={bubble} r="10" className="c-bubble" />
-            <text x="0" y="74" className="z-text small">中心の円に入れば合格</text>
+            <text x="0" y="74" className="z-text small">
+              {t.circularHint}
+            </text>
           </svg>
         </figure>
       )}
       {show === 'lcd' && (
         <figure className="zoom">
-          <figcaption>液晶（電子気泡）</figcaption>
-          <svg viewBox="-64 -64 128 156" aria-label="液晶の電子気泡の拡大">
+          <figcaption>{t.lcdCaption}</figcaption>
+          <svg viewBox="-64 -64 128 156" aria-label={t.lcdAria}>
             <rect x="-64" y="-64" width="128" height="156" rx="6" className="l-bg" />
             <circle r="50" className="l-line" />
             <circle r={Math.max(2, cfg.lcdInnerRatio * 50)} className="l-line" />
@@ -248,17 +243,14 @@ function ZoomPanels(props: { show: ZoomName }) {
 }
 
 type ScopeSize = 'small' | 'medium' | 'large';
-const SCOPE_SIZES: { id: ScopeSize; label: string }[] = [
-  { id: 'small', label: '小' },
-  { id: 'medium', label: '中' },
-  { id: 'large', label: '大' },
-];
+const SCOPE_SIZES: readonly ScopeSize[] = ['small', 'medium', 'large'];
 /** ターゲットのぼけの見た目の最大 [px]（表示の大きさだけ） */
 const TARGET_BLUR_MAX_PX = 10;
 /** 十字線のぼけの見た目の最大（視野の座標。直径100） */
 const RETICLE_BLUR_MAX = 1.6;
 
 function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean }) {
+  const t = useT();
   const [size, setSize] = useState<ScopeSize>('medium');
   const blur = useRef<HTMLDivElement>(null);
   const lastBlur = useRef('');
@@ -326,7 +318,7 @@ function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean
     setSize(s);
   };
 
-  const label = props.peep ? '照準器の視野' : '望遠鏡の視野';
+  const label = props.peep ? t.peepView : t.teleView;
   return (
     <div className={`scope scope-${size} ${props.peep ? 'is-peep' : ''}`} ref={props.ref} aria-label={label}>
       <div className="scope-blur" ref={blur} />
@@ -362,19 +354,19 @@ function TelescopeOverlay(props: { ref: React.Ref<HTMLDivElement>; peep: boolean
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onLostPointerCapture={onUp}
-        title="つかんで動かせます"
+        title={t.dragTitle}
       >
         <span className="scope-label">{label}</span>
-        <span className="scope-sizes" role="group" aria-label="視野の大きさ">
-          {SCOPE_SIZES.map((s) => (
+        <span className="scope-sizes" role="group" aria-label={t.scopeSizesAria}>
+          {SCOPE_SIZES.map((s, i) => (
             <button
-              key={s.id}
+              key={s}
               type="button"
-              className={size === s.id ? 'is-on' : ''}
+              className={size === s ? 'is-on' : ''}
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => changeSize(e, s.id)}
+              onClick={(e) => changeSize(e, s)}
             >
-              {s.label}
+              {t.scopeSizes[i]}
             </button>
           ))}
         </span>

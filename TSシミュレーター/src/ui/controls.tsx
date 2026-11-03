@@ -5,6 +5,7 @@ import type { Frame } from '../bridge';
 import { fixed } from '../bridge/format';
 import type { HoldIntent, SpeedLevel } from './input';
 import { setText, useFrame, useSim, useUi } from './hooks';
+import { useT } from './i18n';
 
 /** 押している指・マウス（どの指で押したかを覚えておき、その指を離したときだけ止める） */
 interface HoldOwner {
@@ -152,11 +153,12 @@ export function PairButton(props: { intents: HoldIntent[]; children: ReactNode; 
 /** 速さ（粗・中・微） */
 export function SpeedSelector(props: { labels?: [string, string, string] }) {
   const { input } = useSim();
+  const t = useT();
   const [speed, setSpeed] = useState<SpeedLevel>(input.speed);
-  const labels = props.labels ?? ['粗', '中', '微'];
+  const labels = props.labels ?? t.speedLabels;
   return (
-    <div className="speed" role="radiogroup" aria-label="操作の速さ">
-      <span className="speed-label">速さ</span>
+    <div className="speed" role="radiogroup" aria-label={t.speedAria}>
+      <span className="speed-label">{t.speed}</span>
       {([0, 1, 2] as const).map((s) => (
         <button
           key={s}
@@ -172,7 +174,7 @@ export function SpeedSelector(props: { labels?: [string, string, string] }) {
           {labels[s]}
         </button>
       ))}
-      <span className="hint">Shiftキーを押している間は「微」</span>
+      <span className="hint">{t.speedHint}</span>
     </div>
   );
 }
@@ -183,7 +185,8 @@ export function DirPad(props: {
   disabled?: boolean;
   labels?: { up: string; down: string; left: string; right: string };
 }) {
-  const l = props.labels ?? { up: '奥へ', down: '手前へ', left: '左へ', right: '右へ' };
+  const t = useT();
+  const l = props.labels ?? t.dir;
   return (
     <div className="dirpad">
       <span />
@@ -194,7 +197,7 @@ export function DirPad(props: {
       <HoldButton intent={props.make(-1, 0)} disabled={props.disabled}>
         ◀<small>{l.left}</small>
       </HoldButton>
-      <span className="dirpad-center">矢印キー</span>
+      <span className="dirpad-center">{t.arrowKeys}</span>
       <HoldButton intent={props.make(1, 0)} disabled={props.disabled}>
         ▶<small>{l.right}</small>
       </HoldButton>
@@ -207,16 +210,14 @@ export function DirPad(props: {
   );
 }
 
-export const LEG_NAMES = ['脚1（奥）', '脚2（左手前）', '脚3（右手前）'] as const;
-export const SCREW_NAMES = ['A（左手前）', 'B（右手前）', 'C（奥）'] as const;
-
 /** 脚を踏み込むボタン */
 export function PressLegButtons(props: { disabled?: boolean }) {
   const { bridge } = useSim();
   const ui = useUi();
+  const t = useT();
   return (
     <div className="button-row">
-      {LEG_NAMES.map((name, i) => (
+      {t.legNames.map((name, i) => (
         <button
           key={name}
           type="button"
@@ -224,7 +225,7 @@ export function PressLegButtons(props: { disabled?: boolean }) {
           className={ui.planted[i] ? 'is-done' : ''}
           onClick={() => bridge.send('pressLeg', i)}
         >
-          {ui.planted[i] ? `${name} 踏み込み済み` : `${name}を踏み込む`}
+          {ui.planted[i] ? t.legPressed(name) : t.pressLeg(name)}
         </button>
       ))}
     </div>
@@ -233,6 +234,7 @@ export function PressLegButtons(props: { disabled?: boolean }) {
 
 /** 脚の伸縮 */
 export function LegLengthControls() {
+  const t = useT();
   const refs = useRef<(HTMLSpanElement | null)[]>([]);
   useFrame(
     useCallback((f: Frame) => {
@@ -246,17 +248,19 @@ export function LegLengthControls() {
   ];
   return (
     <div className="leg-controls">
-      {LEG_NAMES.map((name, i) => (
+      {t.legNames.map((name, i) => (
         <div className="leg-row" key={name}>
           <span className="leg-name">{name}</span>
           <span className="leg-len" ref={(el) => {
             refs.current[i] = el;
           }} />
           <HoldButton intent={{ kind: 'legLength', leg: i, extend: true }}>
-            伸ばす<kbd>{keys[i]?.[0]}</kbd>
+            {t.extend}
+            <kbd>{keys[i]?.[0]}</kbd>
           </HoldButton>
           <HoldButton intent={{ kind: 'legLength', leg: i, extend: false }}>
-            縮める<kbd>{keys[i]?.[1]}</kbd>
+            {t.shorten}
+            <kbd>{keys[i]?.[1]}</kbd>
           </HoldButton>
         </div>
       ))}
@@ -266,6 +270,7 @@ export function LegLengthControls() {
 
 /** 整準ネジ3本（親指の向きで回す） */
 export function ScrewControls(props: { disabled?: boolean }) {
+  const t = useT();
   const keys = [
     ['A', 'S'],
     ['K', 'L'],
@@ -274,14 +279,16 @@ export function ScrewControls(props: { disabled?: boolean }) {
   return (
     <div className="screws">
       <ScrewDiagram />
-      {SCREW_NAMES.map((name, i) => (
+      {t.screwNames.map((name, i) => (
         <div className="screw-row" key={name}>
           <span className="screw-name">{name}</span>
           <HoldButton intent={{ kind: 'screw', screw: i, thumb: -1 }} disabled={props.disabled}>
-            ◀ 親指を左<kbd>{keys[i]?.[0]}</kbd>
+            {t.thumbLeft}
+            <kbd>{keys[i]?.[0]}</kbd>
           </HoldButton>
           <HoldButton intent={{ kind: 'screw', screw: i, thumb: 1 }} disabled={props.disabled}>
-            親指を右 ▶<kbd>{keys[i]?.[1]}</kbd>
+            {t.thumbRight}
+            <kbd>{keys[i]?.[1]}</kbd>
           </HoldButton>
         </div>
       ))}
@@ -293,7 +300,8 @@ export function ScrewControls(props: { disabled?: boolean }) {
             { kind: 'screw', screw: 1, thumb: -1 },
           ]}
         >
-          A・B を内側へ<small>S＋K</small>
+          {t.abIn}
+          <small>S＋K</small>
         </PairButton>
         <PairButton
           disabled={props.disabled}
@@ -302,20 +310,20 @@ export function ScrewControls(props: { disabled?: boolean }) {
             { kind: 'screw', screw: 1, thumb: 1 },
           ]}
         >
-          A・B を外側へ<small>A＋L</small>
+          {t.abOut}
+          <small>A＋L</small>
         </PairButton>
       </div>
-      <p className="note">
-        左手親指の法則：2本を同時に内側または外側へ回すと、気泡は<strong>左手の親指を動かす向き</strong>に動きます。
-      </p>
+      <p className="note">{t.leftThumbRule}</p>
     </div>
   );
 }
 
 /** 整準ネジの並び（上から見た図） */
 function ScrewDiagram() {
+  const t = useT();
   return (
-    <svg className="screw-diagram" viewBox="0 0 120 92" aria-label="整準ネジの並び（上から見た図）">
+    <svg className="screw-diagram" viewBox="0 0 120 92" aria-label={t.screwDiagramAria}>
       <circle cx="60" cy="44" r="34" className="sd-base" />
       <circle cx="31" cy="61" r="9" className="sd-screw" />
       <circle cx="89" cy="61" r="9" className="sd-screw" />
@@ -323,7 +331,9 @@ function ScrewDiagram() {
       <text x="31" y="65" className="sd-label">A</text>
       <text x="89" y="65" className="sd-label">B</text>
       <text x="60" y="14" className="sd-label">C</text>
-      <text x="60" y="90" className="sd-you">手前（あなた）</text>
+      <text x="60" y="90" className="sd-you">
+        {t.you}
+      </text>
     </svg>
   );
 }
@@ -332,13 +342,14 @@ function ScrewDiagram() {
 export function ClampControl() {
   const { bridge } = useSim();
   const ui = useUi();
+  const t = useT();
   return (
     <div className="clamp">
       <span className={`clamp-state ${ui.clampTight ? 'tight' : 'loose'}`}>
-        定心桿：{ui.clampTight ? '締めている' : '緩めている'}
+        {t.clampState(ui.clampTight)}
       </span>
       <button type="button" disabled={!ui.mounted} onClick={() => bridge.send('setClamp', ui.clampTight ? 0 : 1)}>
-        {ui.clampTight ? '緩める' : '締める'}
+        {ui.clampTight ? t.loosen : t.tighten}
         <kbd>T</kbd>
       </button>
     </div>

@@ -1269,6 +1269,17 @@ button.complete {
   font-size: 26px;
 }
 
+/* 言語の選択（開始画面の右上） */
+.lang-select {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: -8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .lead {
   margin: 0;
   color: var(--muted);

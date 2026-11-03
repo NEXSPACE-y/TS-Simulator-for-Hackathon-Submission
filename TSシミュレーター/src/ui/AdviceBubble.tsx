@@ -5,12 +5,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSenpai } from './aiCommon';
 import { useSim, useUi } from './hooks';
+import { useT } from './i18n';
 
 /** ひとことを出しておく時間 [ms] */
 const SHOW_MS = 15_000;
 
 export function AdviceBubble(props: { enabled: boolean }) {
   const ui = useUi();
+  const t = useT();
   const { bridge } = useSim();
   const { state, run, reset } = useSenpai();
   const [shownId, setShownId] = useState(0);
@@ -47,7 +49,7 @@ export function AdviceBubble(props: { enabled: boolean }) {
   return (
     <div className="advice-bubble" role="status" aria-live="polite">
       <div className="advice-head">
-        <span className="senpai-label">AI先輩のひとこと</span>
+        <span className="senpai-label">{t.adviceLabel}</span>
         <button
           type="button"
           className="ghost"
@@ -56,7 +58,7 @@ export function AdviceBubble(props: { enabled: boolean }) {
             reset();
           }}
         >
-          閉じる
+          {t.close}
         </button>
       </div>
       <p className="senpai-text">{text}</p>
