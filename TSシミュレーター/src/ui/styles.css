@@ -1434,6 +1434,9 @@ button.big {
 
   .zoom figcaption {
     font-size: 10px;
+    /* 狭い画面では、長い見出し（「脚頭の穴から（上＝奥）」など）を切らずに2行にする */
+    white-space: normal;
+    line-height: 1.2;
   }
 
   .scope-small {
