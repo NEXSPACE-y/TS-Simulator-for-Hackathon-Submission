@@ -7,7 +7,7 @@
 // - 呼べるのは Pages と Tauri の出どころだけ（環境変数 AI_ALLOWED_ORIGINS で、カンマ区切りで足せる）
 // - 依存関係を増やさないため、Anthropic の SDK は使わず fetch で呼ぶ
 
-export type AiKind = 'review' | 'ask' | 'explain' | 'instruct' | 'advice';
+export type AiKind = 'review' | 'ask' | 'explain' | 'instruct' | 'advice' | 'navi';
 
 /** シミュレーターから届く事実1件（見出しと値） */
 export interface Fact {
@@ -48,7 +48,7 @@ const DEFAULT_ORIGINS = [
   'https://tauri.localhost',
 ];
 
-const KINDS: readonly AiKind[] = ['review', 'ask', 'explain', 'instruct', 'advice'];
+const KINDS: readonly AiKind[] = ['review', 'ask', 'explain', 'instruct', 'advice', 'navi'];
 
 /** 点名の形（例：T-1、P-1） */
 const POINT_NAME = /^[A-Z]{1,3}-\d{1,3}$/;
@@ -136,6 +136,16 @@ ${TIPS}`,
     task: `操作中の新人に、ひとことだけアドバイスする。
 - 事実の「ひとことの中身」を、先輩の話し言葉で言い直す。向き・数値・ネジの名前は変えない。中身にないことは足さない。
 - 40〜80字、1〜2文。責めない。`,
+  },
+  navi: {
+    model: 'claude-haiku-5-5',
+    effort: 'low',
+    maxTokens: 2000,
+    fallbacks: false,
+    task: `教科書モードのナビ役として、いまの手順を案内する。答えは、そのまま音声で読み上げる。
+- 事実の「ナビの中身」を、先輩の話し言葉で、1〜2文・80字以内に言い直す。
+- 手順の番号・向き・ネジや脚の名前・押すボタンの名前は変えない。中身にないことは足さない。
+- 読み上げるので、記号・かっこ・度分秒の数値は使わない。`,
   },
 };
 

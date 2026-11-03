@@ -68,6 +68,15 @@ describe('中継が受け付ける形', () => {
     ).not.toBeNull();
   });
 
+  it('教科書モードのナビは、速さ優先の小さいモデルで、読み上げ向けの指示をつける', () => {
+    const input = parseInput({ kind: 'navi', facts });
+    if (!input) throw new Error('通るはず');
+    const body = buildRequest(input) as { model: string; system: string; fallbacks?: unknown };
+    expect(body.model).toBe('claude-haiku-5-5');
+    expect(body.fallbacks).toBeUndefined();
+    expect(body.system).toContain('音声で読み上げる');
+  });
+
   it('AIへの指示文は中継の中で組み立て、事実と質問は本文に入れる', () => {
     const input = parseInput({ kind: 'ask', facts, question: 'なんで6と7を繰り返すの？' });
     if (!input) throw new Error('通るはず');

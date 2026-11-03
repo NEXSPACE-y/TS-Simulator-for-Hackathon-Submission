@@ -8,12 +8,14 @@ import { AiDrawer } from './AiDrawer';
 import { DebugLog, isDebugMode } from './DebugLog';
 import { SimContext, useUi } from './hooks';
 import { InputManager } from './input';
+import { NaviCaption } from './NaviCaption';
 import { OperationPanel } from './OperationPanel';
 import { ResultModal } from './ResultModal';
 import { StartScreen } from './StartScreen';
 import { StepList } from './StepList';
 import { Toast } from './Toast';
 import { TopBar } from './TopBar';
+import { unlockSpeech } from './speech';
 import { Viewport } from './Viewport';
 
 const QUALITY_KEY = 'ts-sim-quality';
@@ -105,6 +107,8 @@ export function App(props: { bridge: Bridge }) {
           quality={quality}
           onQuality={changeQuality}
           onStart={(mode) => {
+            // 教科書モードのナビを読み上げられるよう、ボタンを押した流れの中で読み上げを使えるようにしておく
+            unlockSpeech();
             bridge.restart(mode === 'textbook' ? ModeId.Textbook : ModeId.Field, newSeed());
             setStarted(true);
           }}
@@ -132,6 +136,7 @@ function Simulator(props: { quality: Quality; onQuality: () => void; onRestart: 
       <main className="center">
         <Viewport quality={props.quality} />
         <AdviceBubble enabled={adviceOn} />
+        {ui.mode === 'textbook' && <NaviCaption />}
       </main>
       <OperationPanel />
       <ResultModal onRestart={props.onRestart} />

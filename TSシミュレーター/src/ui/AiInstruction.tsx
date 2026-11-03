@@ -5,20 +5,7 @@
 import { useEffect } from 'react';
 import { SenpaiAnswer, useSenpai } from './aiCommon';
 import { useSim, useUi } from './hooks';
-
-/** 指示を読み上げる（読み上げが使えない環境では何もしない） */
-function speak(text: string): void {
-  try {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ja-JP';
-    synth.speak(u);
-  } catch {
-    // 読み上げは無くても練習はできる
-  }
-}
+import { speak } from './speech';
 
 export function AiInstruction() {
   const ui = useUi();

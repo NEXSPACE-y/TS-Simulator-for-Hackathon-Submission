@@ -598,6 +598,43 @@ pub struct UiState {
     pub observation: ObservationView,
     /// 操作中のひとこと（AI先輩）。AIが使えないときは fallback をそのまま出す
     pub advice: Option<AdviceView>,
+    /// 教科書モードのナビ（音声で読み上げる案内）
+    pub navi: Option<NaviView>,
+}
+
+/// 教科書モードのナビを出すきっかけ
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NaviKind {
+    /// 手順に入った（AIが言い方を整える）
+    Enter,
+    /// 手順の目標を満たした（AIが言い方を整える）
+    Done,
+    /// 次の操作が変わった（コアの文をそのまま読む）
+    Action,
+    /// 手順外の操作をした（コアの文をそのまま読む）
+    Warning,
+}
+
+/// 教科書モードのナビ1件（きっかけが出た時点の事実を、そのまま持っておく）
+#[derive(Clone, Debug, PartialEq)]
+pub struct NaviCue {
+    pub id: u32,
+    pub kind: NaviKind,
+    /// 画面に出す文（AIが使えないとき・AIを使わないきっかけでは、これを読む）
+    pub text: String,
+    /// 読み上げ用の文（かっこ書きを除いたもの）
+    pub speech: String,
+    /// AIに言い方を整えてもらうか
+    pub ai: bool,
+    pub facts: Vec<Fact>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NaviView {
+    pub id: u32,
+    pub text: String,
+    pub speech: String,
+    pub ai: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -645,6 +682,7 @@ struct UiSignature {
     goal_ok: bool,
     loops: u32,
     advice_id: u32,
+    navi_id: u32,
 }
 
 pub struct Simulator {
@@ -687,6 +725,18 @@ pub struct Simulator {
     advised_loops: bool,
     advised_screw_limit: bool,
     advised_slide_before_level: bool,
+    /// 教科書モードのナビ
+    navi: Option<NaviCue>,
+    navi_seq: u32,
+    navi_last_ms: f64,
+    /// ナビで最後に案内した手順（0＝まだ）
+    navi_step: u8,
+    navi_goal_ok: bool,
+    /// 最後に読んだ「次の操作」の種類と、いま候補になっている種類（と、そうなった時刻）
+    navi_action_key: String,
+    navi_candidate: (String, f64),
+    /// 手順外の操作の注意（ナビで読む）
+    navi_warning: Option<String>,
 }
 
 /// AI先輩に渡す事実の種類
@@ -702,6 +752,8 @@ pub enum FactKind {
     Instruction,
     /// 操作中のひとこと（きっかけが出た時点の事実）
     Advice,
+    /// 教科書モードのナビ（きっかけが出た時点の事実）
+    Navi,
 }
 
 impl Simulator {
@@ -769,6 +821,14 @@ impl Simulator {
             advised_loops: false,
             advised_screw_limit: false,
             advised_slide_before_level: false,
+            navi: None,
+            navi_seq: 0,
+            navi_last_ms: f64::NEG_INFINITY,
+            navi_step: 0,
+            navi_goal_ok: false,
+            navi_action_key: String::new(),
+            navi_candidate: (String::new(), 0.0),
+            navi_warning: None,
         };
         sim.ui_sig = sim.signature();
         sim
@@ -834,6 +894,7 @@ impl Simulator {
         }
         self.recording = false;
         self.update_coach(dt_ms, before, counts);
+        self.check_navi();
         self.refresh_revision();
     }
 
@@ -940,8 +1001,9 @@ impl Simulator {
                             self.guided_step, cur.short
                         ),
                     };
-                    if self.notify(NoticeKind::Warning, text) {
+                    if self.notify(NoticeKind::Warning, text.clone()) {
                         self.coach.textbook_warnings += 1;
+                        self.navi_warning = Some(text);
                     }
                 }
             }
@@ -1612,6 +1674,12 @@ impl Simulator {
                 id: a.id,
                 fallback: a.fallback.clone(),
             }),
+            navi: self.navi.as_ref().map(|n| NaviView {
+                id: n.id,
+                text: n.text.clone(),
+                speech: n.speech.clone(),
+                ai: n.ai,
+            }),
         }
     }
 
@@ -1754,12 +1822,106 @@ impl Simulator {
             FactKind::Calc => self.calc_facts(),
             FactKind::Instruction => self.instruction_facts(),
             FactKind::Advice => self.advice.as_ref().map(|a| a.facts.clone()),
+            FactKind::Navi => self.navi.as_ref().map(|n| n.facts.clone()),
         }
     }
 
     /// いまの操作中のひとこと（テスト・確認用）
     pub fn advice(&self) -> Option<&AdviceEvent> {
         self.advice.as_ref()
+    }
+
+    /// いまの教科書モードのナビ（テスト・確認用）
+    pub fn navi(&self) -> Option<&NaviCue> {
+        self.navi.as_ref()
+    }
+
+    /// 教科書モードのナビを出すか決める（据付中、毎フレーム。タイマーが動く前から）。
+    /// 手順に入った・目標を満たした・次の操作が変わった（しばらく同じなら）・手順外の操作、のとき
+    fn check_navi(&mut self) {
+        if self.mode != Mode::Textbook || self.phase != Phase::Setup {
+            return;
+        }
+        let step = self.guided_step;
+        let s = self.snapshot();
+        let (goal, goal_ok) = self.textbook_goal(step, &s);
+        let next = self.next_action();
+        let key = coach::action_key(&next);
+        let label = self.step_label(step);
+        let now = self.now_ms;
+
+        if let Some(w) = self.navi_warning.take() {
+            if now - self.navi_last_ms >= NAVI_WARNING_GAP_MS {
+                self.push_navi(NaviKind::Warning, w, &goal, goal_ok, &next, false);
+                return;
+            }
+        }
+        if step != self.navi_step {
+            self.navi_step = step;
+            self.navi_goal_ok = goal_ok;
+            self.navi_action_key = key.clone();
+            self.navi_candidate = (key, now);
+            let text = format!("手順{}「{}」。目標は、{}。まずは、{}", step, label, goal, next);
+            self.push_navi(NaviKind::Enter, text, &goal, goal_ok, &next, true);
+            return;
+        }
+        if goal_ok != self.navi_goal_ok {
+            self.navi_goal_ok = goal_ok;
+            if goal_ok {
+                let text = if step < 7 {
+                    format!("手順{}の目標ができた。「次の手順へ」を押そう", step)
+                } else {
+                    "求心と電子気泡の両方がそろった。「据付完了」を押そう".to_string()
+                };
+                self.navi_action_key = key.clone();
+                self.push_navi(NaviKind::Done, text, &goal, goal_ok, &next, true);
+                return;
+            }
+        }
+        if goal_ok || key == self.navi_action_key {
+            self.navi_candidate = (key, now);
+            return;
+        }
+        // 次の操作の種類が変わって、しばらく同じままなら読む（行ったり来たりで読み続けない）
+        if self.navi_candidate.0 != key {
+            self.navi_candidate = (key, now);
+            return;
+        }
+        if now - self.navi_candidate.1 >= NAVI_STABLE_MS && now - self.navi_last_ms >= NAVI_ACTION_GAP_MS {
+            self.navi_action_key = key;
+            let text = format!("次は、{}", next);
+            self.push_navi(NaviKind::Action, text, &goal, goal_ok, &next, false);
+        }
+    }
+
+    fn push_navi(&mut self, kind: NaviKind, text: String, goal: &str, goal_ok: bool, next: &str, ai: bool) {
+        let step = self.guided_step;
+        let trigger = match kind {
+            NaviKind::Enter => "手順に入った",
+            NaviKind::Done => "手順の目標を満たした",
+            NaviKind::Action => "次の操作が変わった",
+            NaviKind::Warning => "手順外の操作をした",
+        };
+        let facts = vec![
+            fact("きっかけ", trigger),
+            fact("いまの手順", format!("手順{}「{}」（全7手順）", step, self.step_label(step))),
+            fact(
+                "この手順の目標",
+                format!("{}（{}）", goal, if goal_ok { "できている" } else { "まだ" }),
+            ),
+            fact("次の操作", next.to_string()),
+            fact("ナビの中身", coach::clip(text.clone(), 240)),
+        ];
+        self.navi_seq += 1;
+        self.navi_last_ms = self.now_ms;
+        self.navi = Some(NaviCue {
+            id: self.navi_seq,
+            kind,
+            speech: coach::speech_text(&text),
+            text,
+            ai,
+            facts,
+        });
     }
 
     /// 整準ネジで合わせる段階か（教科書モードは手順3・5・7、現場モードは3本とも踏み込んだあと）
@@ -2377,6 +2539,7 @@ impl Simulator {
             goal_ok,
             loops: self.loops,
             advice_id: self.advice.as_ref().map(|a| a.id).unwrap_or(0),
+            navi_id: self.navi.as_ref().map(|n| n.id).unwrap_or(0),
         }
     }
 

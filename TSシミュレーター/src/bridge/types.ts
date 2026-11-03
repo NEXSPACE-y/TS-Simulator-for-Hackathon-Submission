@@ -112,6 +112,8 @@ export interface UiState {
   observation: ObservationView;
   /** 操作中のひとこと（AI先輩）。id はきっかけが出るたびに変わる。fallback＝AIが使えないときの言い方 */
   advice: { id: number; fallback: string } | null;
+  /** 教科書モードのナビ。id はきっかけが出るたびに変わる。speech＝読み上げ用の文、ai＝AIに言い方を整えてもらうか */
+  navi: { id: number; text: string; speech: string; ai: boolean } | null;
 }
 
 /** AI先輩に渡す事実1件（コアが作る見出しと値。AIには、これを言葉にさせるだけ） */

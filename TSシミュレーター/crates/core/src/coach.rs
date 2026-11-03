@@ -241,6 +241,47 @@ pub fn format_signed_m(mm: f64) -> String {
     }
 }
 
+/// 読み上げ用の文：数字の入った全角かっこ（…）を除く（いまの角度などの数値は読まない。
+/// 「脚3（右手前）」のような、数字の無いかっこ書きは残す）
+pub fn speech_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut group = String::new();
+    let mut depth = 0usize;
+    for c in s.chars() {
+        match c {
+            '（' => {
+                depth += 1;
+                group.push(c);
+            }
+            '）' if depth > 0 => {
+                group.push(c);
+                depth -= 1;
+                if depth == 0 {
+                    if !group.chars().any(|g| g.is_ascii_digit()) {
+                        out.push_str(&group);
+                    }
+                    group.clear();
+                }
+            }
+            _ if depth > 0 => group.push(c),
+            _ => out.push(c),
+        }
+    }
+    // 閉じていないかっこは、そのまま残す
+    out.push_str(&group);
+    out
+}
+
+/// 「次の操作」の種類（かっこ書きと数値を除いたもの。数値が変わっただけでは、別の操作としない）
+pub fn action_key(s: &str) -> String {
+    speech_text(s)
+        .chars()
+        .filter(|c| !c.is_ascii_digit() && !matches!(c, '.' | '+' | '-' | '\u{2212}' | '°' | '′' | '″'))
+        .collect::<String>()
+        .replace("約", "")
+        .replace(" mm", "")
+}
+
 /// 手順の基準タイム [ms]（モードごと。仮）
 pub fn step_ref_ms(textbook: bool, step: u8) -> f64 {
     let refs = if textbook {
@@ -828,6 +869,17 @@ mod tests {
         assert_eq!(format_signed_m(12_345.4), "+12.345");
         assert_eq!(format_signed_m(-3_210.0), "\u{2212}3.210");
         assert_eq!(format_signed_m(0.0004), "±0.000");
+    }
+
+    #[test]
+    fn speech_text_drops_parentheses_and_action_key_drops_numbers() {
+        let a = "整準ネジCを、親指を右へ動かす向きに回す（電子気泡のYがいま+0°01′49″。0に近づける）";
+        assert_eq!(speech_text(a), "整準ネジCを、親指を右へ動かす向きに回す");
+        assert_eq!(speech_text("脚3（右手前）を縮める（円形気泡を中心の円に近づける）"), "脚3（右手前）を縮める（円形気泡を中心の円に近づける）");
+        let b = "器械を左へ約2.0 mmずらし、終わったら定心桿を締める";
+        let c = "器械を左へ約0.7 mmずらし、終わったら定心桿を締める";
+        assert_eq!(action_key(b), action_key(c));
+        assert_ne!(action_key(b), action_key("器械を右へ約0.7 mmずらし、終わったら定心桿を締める"));
     }
 
     #[test]

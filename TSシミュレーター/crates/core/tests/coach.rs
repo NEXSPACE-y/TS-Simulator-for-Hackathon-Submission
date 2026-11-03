@@ -560,3 +560,82 @@ fn sliding_before_leveling_brings_advice() {
     assert_ne!(Some(a.id), first);
     assert_eq!(a.kind, AdviceKind::SlideBeforeLevel);
 }
+
+// ---------------------------------------------------------------------------
+// 教科書モードのナビ（きっかけと中身はコアが決める）
+// ---------------------------------------------------------------------------
+
+use ts_core::sim::NaviKind;
+
+#[test]
+fn textbook_navi_starts_at_step_one_and_field_mode_has_none() {
+    let mut sim = Simulator::new(Mode::Textbook, 4);
+    sim.frame(0.0, &[]);
+    let Some(n) = sim.navi() else {
+        unreachable!("最初のフレームで、手順1に入ったナビが出る");
+    };
+    assert_eq!(n.kind, NaviKind::Enter);
+    assert!(n.ai);
+    assert!(n.text.starts_with("手順1"), "{}", n.text);
+    assert!(!n.speech.contains('（'), "{}", n.speech);
+    assert!(sim.ai_facts(FactKind::Navi).is_some());
+    assert!(sim.ui_state().navi.is_some());
+
+    let mut field = Simulator::new(Mode::Field, 4);
+    field.frame(0.0, &[]);
+    assert!(field.navi().is_none());
+}
+
+#[test]
+fn textbook_navi_reads_out_of_step_warnings() {
+    let mut sim = Simulator::new(Mode::Textbook, 4);
+    sim.frame(0.0, &[]);
+    // 手順1で器械を載せる（手順2の操作）
+    sim.frame(5_000.0, &[Command::MountInstrument]);
+    let Some(n) = sim.navi() else {
+        unreachable!();
+    };
+    assert_eq!(n.kind, NaviKind::Warning);
+    assert!(n.text.starts_with("注意"), "{}", n.text);
+    assert!(!n.ai);
+}
+
+#[test]
+fn textbook_navi_follows_the_whole_setup() {
+    let mut sim = Simulator::new(Mode::Textbook, 2);
+    let mut t = 0.0;
+    sim.frame(t, &[]);
+    let mut seen: Vec<(NaviKind, u8)> = Vec::new();
+    let mut last_id = 0;
+    for _ in 0..40_000 {
+        if let Some(n) = sim.navi() {
+            if n.id != last_id {
+                last_id = n.id;
+                let step = n.text.chars().nth(2).and_then(|c| c.to_digit(10)).unwrap_or(0) as u8;
+                seen.push((n.kind, step));
+            }
+        }
+        let hint = sim.next_action();
+        let cmds = commands_for(&sim, &hint);
+        assert!(!cmds.is_empty(), "操作に直せない次の操作：{}", hint);
+        t += 50.0;
+        sim.frame(t, &cmds);
+        if sim.judgement().is_some() {
+            break;
+        }
+    }
+    assert!(sim.judgement().is_some_and(|j| j.passed));
+    // 7つの手順それぞれに入ったナビがあり、目標を満たしたナビと、次の操作のナビもある
+    for step in 1..=7u8 {
+        assert!(
+            seen.iter().any(|(k, s)| *k == NaviKind::Enter && *s == step),
+            "手順{}のナビが無い：{:?}",
+            step,
+            seen
+        );
+    }
+    assert!(seen.iter().any(|(k, _)| *k == NaviKind::Done));
+    assert!(seen.iter().any(|(k, _)| *k == NaviKind::Action));
+    // 読みすぎない（1手順あたり平均10件まで）
+    assert!(seen.len() <= 70, "ナビが多すぎる：{}件", seen.len());
+}

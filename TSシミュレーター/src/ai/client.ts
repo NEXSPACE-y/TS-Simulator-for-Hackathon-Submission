@@ -5,8 +5,9 @@
 import type { AiFact } from '../bridge';
 import { AI_RELAY_URL, AI_TIMEOUT_MS } from './config';
 
-/** review＝据付の講評、ask＝何でも質問、explain＝FS座標の計算の説明、instruct＝現場の指示、advice＝操作中のひとこと */
-export type AiKind = 'review' | 'ask' | 'explain' | 'instruct' | 'advice';
+/** review＝据付の講評、ask＝何でも質問、explain＝FS座標の計算の説明、instruct＝現場の指示、advice＝操作中のひとこと、
+ *  navi＝教科書モードのナビ */
+export type AiKind = 'review' | 'ask' | 'explain' | 'instruct' | 'advice' | 'navi';
 
 export type AiResult = { ok: true; text: string } | { ok: false; message: string };
 

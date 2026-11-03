@@ -319,6 +319,7 @@ fn fact_kind(code: u32) -> Option<FactKind> {
         3 => Some(FactKind::Calc),
         4 => Some(FactKind::Instruction),
         5 => Some(FactKind::Advice),
+        6 => Some(FactKind::Navi),
         _ => None,
     }
 }
@@ -470,8 +471,21 @@ fn ui_json(u: &UiState) -> String {
         .as_ref()
         .map(|a| format!(r#"{{"id":{},"fallback":{}}}"#, a.id, js(&a.fallback)))
         .unwrap_or_else(|| "null".into());
+    let navi = u
+        .navi
+        .as_ref()
+        .map(|n| {
+            format!(
+                r#"{{"id":{},"text":{},"speech":{},"ai":{}}}"#,
+                n.id,
+                js(&n.text),
+                js(&n.speech),
+                n.ai
+            )
+        })
+        .unwrap_or_else(|| "null".into());
     format!(
-        r#"{{"mode":"{}","phase":"{}","currentStep":{},"steps":[{}],"goal":{},"notice":{},"planted":[{},{},{}],"mounted":{},"clampTight":{},"loops":{},"judgement":{},"observation":{},"advice":{}}}"#,
+        r#"{{"mode":"{}","phase":"{}","currentStep":{},"steps":[{}],"goal":{},"notice":{},"planted":[{},{},{}],"mounted":{},"clampTight":{},"loops":{},"judgement":{},"observation":{},"advice":{},"navi":{}}}"#,
         mode,
         phase,
         u.current_step,
@@ -486,7 +500,8 @@ fn ui_json(u: &UiState) -> String {
         u.loops,
         judgement,
         observation,
-        advice
+        advice,
+        navi
     )
 }
 
@@ -545,7 +560,7 @@ impl Sim {
         ui_json(&self.inner.ui_state())
     }
 
-    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評、2＝いまの状態、3＝FS座標の計算、4＝現場の指示、5＝操作中のひとこと
+    /// AI先輩に渡す事実（JSON の配列。まだ出せないときは null）。kind：1＝据付の講評、2＝いまの状態、3＝FS座標の計算、4＝現場の指示、5＝操作中のひとこと、6＝教科書モードのナビ
     #[wasm_bindgen(js_name = aiFactsJson)]
     pub fn ai_facts_json(&self, kind: u32) -> String {
         fact_kind(kind)

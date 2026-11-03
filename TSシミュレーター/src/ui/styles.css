@@ -1106,6 +1106,45 @@ button.complete {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
+.navi-caption {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: min(380px, calc(100% - 160px));
+  min-width: 180px;
+  /* 3Dビューからはみ出さない（下の視点切替の分はあける） */
+  max-height: calc(100% - 66px);
+  overflow-y: auto;
+  z-index: 4;
+  padding: 6px 10px 8px;
+  background: rgba(26, 31, 38, 0.94);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.navi-caption .senpai-label {
+  color: var(--ok);
+}
+
+.navi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.navi-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.navi-actions button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 .advice-head {
   display: flex;
   align-items: center;
