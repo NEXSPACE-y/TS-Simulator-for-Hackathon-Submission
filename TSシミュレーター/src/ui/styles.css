@@ -448,6 +448,8 @@ input {
   border-radius: 6px;
   overflow: hidden;
   pointer-events: none;
+  /* 視野の幅に合わせて、下の帯の文字を出すか決める（.scope-label） */
+  container: scope / inline-size;
 }
 
 .scope-small {
@@ -487,6 +489,8 @@ input {
 .scope-sizes {
   display: flex;
   gap: 3px;
+  flex: none;
+  margin-left: auto;
 }
 
 .scope-sizes button {
@@ -524,9 +528,21 @@ input {
   stroke-width: 2;
 }
 
+/* 文字は折り返さない（折り返すと帯が縦に伸びて、ボタンが視野の真ん中に来てしまう） */
 .scope-label {
   font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* 視野が狭くて文字とボタンが1行に入らないときは、文字を出さずボタンだけにする */
+@container scope (max-width: 169px) {
+  .scope-label {
+    display: none;
+  }
 }
 
 /* ---------------- 操作盤 ---------------- */
