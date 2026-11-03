@@ -2,7 +2,7 @@
 // 確かめること：決まった形のデータだけを通すこと、呼べる出どころを絞ること、APIキーは環境変数から送ること、
 // 指示の聞き取りで点名が違う文は出さないこと。
 import { describe, expect, it } from 'vitest';
-import { buildRequest, handle, instructTextOk, parseInput, type Deps } from '../relay/api/ai';
+import { buildRequest, handle, instructFallback, instructTextOk, parseInput, type Deps } from '../relay/api/ai';
 
 const PAGES = 'https://nexspace-y.github.io';
 const facts = [
@@ -86,6 +86,22 @@ describe('中継が受け付ける形', () => {
     expect(body.messages[0]?.content).toContain('新人の質問：なんで6と7を繰り返すの？');
     expect(body.max_tokens).toBeGreaterThan(0);
   });
+
+  it('画面が英語のときだけ、英語で答える指示を足す（日本語は前と同じ形）', () => {
+    const ja = parseInput({ kind: 'advice', facts });
+    const en = parseInput({ kind: 'advice', facts, lang: 'en' });
+    if (!ja || !en) throw new Error('通るはず');
+    expect(parseInput({ kind: 'advice', facts, lang: 'ja' })?.lang).toBeUndefined();
+    expect(en.lang).toBe('en');
+    const jaSystem = (buildRequest(ja) as { system: string }).system;
+    const enSystem = (buildRequest(en) as { system: string }).system;
+    expect(jaSystem).not.toContain('English');
+    expect(enSystem).toContain('Write the whole reply in natural, friendly English.');
+    // 用語とボタンの名前は、画面の英語にそろえる
+    expect(enSystem).toContain('据付完了＝"Finish setup"');
+    expect(parseInput({ kind: 'advice', facts, lang: 'fr' })).toBeNull();
+    expect(parseInput({ kind: 'advice', facts, lang: 1 })).toBeNull();
+  });
 });
 
 describe('中継の受け口', () => {
@@ -151,5 +167,18 @@ describe('中継の受け口', () => {
     expect(data.text).toContain('T-1');
     expect(data.text).toContain('T-2');
     expect(data.text).not.toContain('T-3');
+  });
+});
+
+describe('中継の英語', () => {
+  it('指示の聞き取りの決まった言い方も、英語の画面では英語にする', () => {
+    const f = [
+      { k: '機械点', v: 'T-1' },
+      { k: 'BS点', v: 'T-2' },
+    ];
+    expect(instructFallback(f)).toBe('機械点はT-1、BSはT-2な。器械高は巻尺で測って入れといて。');
+    expect(instructFallback(f, 'en')).toBe(
+      'Station is T-1, backsight is T-2. Measure the instrument height with the tape and enter it.',
+    );
   });
 });

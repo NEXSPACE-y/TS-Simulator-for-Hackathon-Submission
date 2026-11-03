@@ -19,6 +19,8 @@ export interface AiInput {
   kind: AiKind;
   facts: Fact[];
   question?: string;
+  /** 画面が英語のとき 'en'（答えを英語にする。事実は日本語のまま届く） */
+  lang?: 'en';
 }
 
 /** 受け付ける大きさの上限 */
@@ -74,6 +76,13 @@ const TIPS = `先輩のコツ（この中から選ぶ。ほかのコツは作ら
 5. 器械をずらすのは、整準が済んでから。ずらすと気泡が少し崩れるので、また整準する。
 6. ずらしたあとは、定心桿の締め忘れに気をつける。
 7. 「据付完了」を押す前に、求心ズレと電子気泡の両方が許容内か見る。`;
+
+/** 画面が英語のときに足す指示（用語とボタンの名前は、画面の英語にそろえる） */
+const ENGLISH = `返事は、すべて自然でやさしい英語で書く（Write the whole reply in natural, friendly English.）
+- 事実の中の日本語は、英語に直して使う。数値・点名・手順の番号は、そのまま使う。
+- 字数の決まりは、英語では同じくらいの内容の長さ（字数の2倍の文字数まで）と読みかえる。
+- 用語とボタンの名前は、次の英語にそろえる：据付完了＝"Finish setup"、次の手順へ＝"Next step"、続行する＝"Continue"、最初から＝"Restart"、セット＝"Set"、測量＝"Measure"、整準ネジ＝leveling screw、定心桿＝mounting screw、円形気泡＝circular bubble、電子気泡＝electronic bubble、求心＝centering、レーザー点＝laser dot、測点＝the point、脚頭＝tripod head、踏み込む＝press in、機械点＝station、BS＝backsight、FS＝foresight、器械高＝instrument height、電子平板＝tablet、照準器＝peep sight、合焦つまみ＝focus knob、左手親指の法則＝left-thumb rule、奥＝far side、手前＝near side、先輩＝senpai。
+- 関係のない質問への決まった答えは "That's not about surveying, so I can't answer it here." にする。`;
 
 interface KindSetting {
   model: string;
@@ -165,7 +174,7 @@ function cleanText(s: string): string {
 /** 決まった形なら AiInput を、そうでなければ null を返す */
 export function parseInput(raw: unknown): AiInput | null {
   if (!isPlainObject(raw)) return null;
-  const allowedKeys = new Set(['kind', 'facts', 'question']);
+  const allowedKeys = new Set(['kind', 'facts', 'question', 'lang']);
   if (Object.keys(raw).some((k) => !allowedKeys.has(k))) return null;
   const kind = raw.kind;
   if (typeof kind !== 'string' || !KINDS.includes(kind as AiKind)) return null;
@@ -182,6 +191,10 @@ export function parseInput(raw: unknown): AiInput | null {
     out.push({ k: ck, v: cv });
   }
   const input: AiInput = { kind: kind as AiKind, facts: out };
+  if (raw.lang !== undefined) {
+    if (raw.lang !== 'ja' && raw.lang !== 'en') return null;
+    if (raw.lang === 'en') input.lang = 'en';
+  }
   if (raw.question !== undefined) {
     // 質問の文は「何でも質問」のときだけ
     if (kind !== 'ask' || typeof raw.question !== 'string') return null;
@@ -215,10 +228,13 @@ export function instructTextOk(text: string, facts: readonly Fact[]): boolean {
   return found.every((n) => n === names.station || n === names.backsight);
 }
 
-/** AIの指示文が使えないときの、決まった言い方 */
-export function instructFallback(facts: readonly Fact[]): string {
+/** AIの指示文が使えないときの、決まった言い方（コアの決まった言い方と同じ文） */
+export function instructFallback(facts: readonly Fact[], lang?: 'en'): string {
   const names = instructNames(facts);
   if (!names) return '';
+  if (lang === 'en') {
+    return `Station is ${names.station}, backsight is ${names.backsight}. Measure the instrument height with the tape and enter it.`;
+  }
   return `機械点は${names.station}、BSは${names.backsight}な。器械高は巻尺で測って入れといて。`;
 }
 
@@ -235,7 +251,7 @@ export function buildRequest(input: AiInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: s.model,
     max_tokens: s.maxTokens,
-    system: `${COMMON}\n\n${s.task}`,
+    system: input.lang === 'en' ? `${COMMON}\n\n${s.task}\n\n${ENGLISH}` : `${COMMON}\n\n${s.task}`,
     output_config: { effort: s.effort },
     messages: [{ role: 'user', content }],
   };
@@ -362,7 +378,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   let text = picked.text;
   if (input.kind === 'instruct' && !instructTextOk(text, input.facts)) {
     // 点名が違う・足りない指示は出さず、決まった言い方にする
-    text = instructFallback(input.facts);
+    text = instructFallback(input.facts, input.lang);
   }
   return json(200, { ok: true, text }, cors);
 }
