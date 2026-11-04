@@ -117,9 +117,9 @@ describe('中継が受け付ける形', () => {
       if (!input) throw new Error('通るはず');
       return (buildRequest(input) as { system: string }).system;
     };
-    expect(system({ kind: 'navi', facts, lang: 'en' })).toContain('30語（words）以内');
-    expect(system({ kind: 'navi', facts })).not.toContain('30語');
-    expect(system({ kind: 'advice', facts, lang: 'en' })).not.toContain('30語');
+    expect(system({ kind: 'navi', facts, lang: 'en' })).toContain('25語（words）以内');
+    expect(system({ kind: 'navi', facts })).not.toContain('25語');
+    expect(system({ kind: 'advice', facts, lang: 'en' })).not.toContain('25語');
   });
 });
 
