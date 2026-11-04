@@ -99,6 +99,7 @@ describe('中継が受け付ける形', () => {
     expect(enSystem).toContain('Write the whole reply in natural, friendly English.');
     // 用語とボタンの名前は、画面の英語にそろえる
     expect(enSystem).toContain('据付完了＝"Finish setup"');
+    expect(enSystem).toContain('器械を載せて定心桿で固定する＝"Mount the instrument and fix it with the mounting screw"');
     expect(parseInput({ kind: 'advice', facts, lang: 'fr' })).toBeNull();
     expect(parseInput({ kind: 'advice', facts, lang: 1 })).toBeNull();
   });

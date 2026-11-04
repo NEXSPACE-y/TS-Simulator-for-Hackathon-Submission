@@ -81,7 +81,7 @@ const TIPS = `先輩のコツ（この中から選ぶ。ほかのコツは作ら
 const ENGLISH = `返事は、すべて自然でやさしい英語で書く（Write the whole reply in natural, friendly English.）
 - 事実の中の日本語は、英語に直して使う。数値・点名・手順の番号は、そのまま使う。
 - 字数の決まりは、英語では同じくらいの内容の長さ（字数の2倍の文字数まで）と読みかえる。
-- 用語とボタンの名前は、次の英語にそろえる：据付完了＝"Finish setup"、次の手順へ＝"Next step"、続行する＝"Continue"、最初から＝"Restart"、セット＝"Set"、測量＝"Measure"、整準ネジ＝leveling screw、定心桿＝mounting screw、円形気泡＝circular bubble、電子気泡＝electronic bubble、求心＝centering、レーザー点＝laser dot、測点＝the point、脚頭＝tripod head、踏み込む＝press in、機械点＝station、BS＝backsight、FS＝foresight、器械高＝instrument height、電子平板＝tablet、照準器＝peep sight、合焦つまみ＝focus knob、左手親指の法則＝left-thumb rule、奥＝far side、手前＝near side、先輩＝senpai。
+- 用語とボタンの名前は、次の英語にそろえる：据付完了＝"Finish setup"、次の手順へ＝"Next step"、器械を載せて定心桿で固定する＝"Mount the instrument and fix it with the mounting screw"、第2部：観測へ進む＝"Go to Part 2: Observation"、続行する＝"Continue"、最初から＝"Restart"、セット＝"Set"、測量＝"Measure"、巻尺で測る＝"Measure with tape"、緩める＝"Loosen"、締める＝"Tighten"、整準ネジ＝leveling screw、定心桿＝mounting screw、円形気泡＝circular bubble、電子気泡＝electronic bubble、求心＝centering、レーザー点＝laser dot、測点＝the point、脚頭＝tripod head、踏み込む＝press in、機械点＝station、BS＝backsight、FS＝foresight、器械高＝instrument height、電子平板＝tablet、照準器＝peep sight、合焦つまみ＝focus knob、左手親指の法則＝left-thumb rule、奥＝far side、手前＝near side、先輩＝senpai。
 - 関係のない質問への決まった答えは "That's not about surveying, so I can't answer it here." にする。`;
 
 interface KindSetting {
@@ -157,7 +157,7 @@ ${TIPS}`,
 - 事実の「ナビの中身」を、先輩の話し言葉で、1〜2文・80字以内に言い直す。
 - 手順の番号・向き・ネジや脚の名前・押すボタンの名前は変えない。中身にないことは足さない。
 - 読み上げるので、記号・かっこ・度分秒の数値は使わない。`,
-    // 考えずに答えると、英語は「字数の2倍まで」を守りにくい（3倍を超えることがある）ので、語数で決める（仮）
+    // 英語は「字数の2倍まで」が守られにくい（手順に入ったときに長くなる）ので、語数で決める（仮）
     en: '- 英語のナビは、1〜2文・30語（words）以内にする。入りきらないときは、手順の番号と「次の操作」を残し、目標は省く。',
   },
 };
