@@ -2021,14 +2021,13 @@ impl Simulator {
             self.navi_action_key = key.clone();
             self.navi_candidate = (key, now);
             // 目標は操作盤に出ているので、読み上げでは言わない（長くなりすぎるため。AIには事実で渡す）
-            let text = tr!(
-                self.lang,
-                "手順{}「{}」。まずは、{}",
-                "Step {} \"{}\". First, {}",
-                step,
-                label,
-                lower_first(self.lang, &next)
-            );
+            let first = lower_first(self.lang, &next);
+            let text = if next.contains(label) {
+                // 押すボタンの名前が手順の名前と同じなら、名前は1回だけ言う（英語では長くなりすぎるため）
+                tr!(self.lang, "手順{}。まずは、{}", "Step {}. First, {}", step, first)
+            } else {
+                tr!(self.lang, "手順{}「{}」。まずは、{}", "Step {} \"{}\". First, {}", step, label, first)
+            };
             self.push_navi(NaviKind::Enter, text, &goal, goal_ok, &next, true);
             return;
         }
@@ -2078,6 +2077,9 @@ impl Simulator {
             NaviKind::Action => "次の操作が変わった",
             NaviKind::Warning => "手順外の操作をした",
         };
+        // ナビの言い方は、そのまま読み上げる。AIにも読み上げ用の文（数値の入ったかっこ書きを除いたもの）を渡す
+        // （いまの角度などの度分秒を渡すと、AIが読み上げてしまうため）
+        let speech = coach::speech_text(&text);
         let facts = vec![
             fact("きっかけ", trigger),
             fact("いまの手順", format!("手順{}「{}」（全7手順）", step, self.step_label(step))),
@@ -2085,15 +2087,15 @@ impl Simulator {
                 "この手順の目標",
                 format!("{}（{}）", goal, if goal_ok { "できている" } else { "まだ" }),
             ),
-            fact("次の操作", next.to_string()),
-            fact("ナビの中身", coach::clip(text.clone(), 240)),
+            fact("次の操作", coach::speech_text(next)),
+            fact("ナビの中身", coach::clip(speech.clone(), 240)),
         ];
         self.navi_seq += 1;
         self.navi_last_ms = self.now_ms;
         self.navi = Some(NaviCue {
             id: self.navi_seq,
             kind,
-            speech: coach::speech_text(&text),
+            speech,
             text,
             ai,
             facts,

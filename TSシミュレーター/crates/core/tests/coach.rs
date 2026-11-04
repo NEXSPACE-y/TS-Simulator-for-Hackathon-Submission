@@ -737,6 +737,14 @@ fn textbook_navi_reads_out_of_step_warnings() {
     assert!(!n.ai);
 }
 
+/// ナビのAIに渡す「ナビの中身」「次の操作」に、いまの角度などの度分秒が入っていない（AIが読み上げてしまうため）
+fn assert_navi_facts_have_no_dms(sim: &Simulator, what: &str) {
+    let facts = sim.ai_facts(FactKind::Navi).unwrap_or_default();
+    for f in facts.iter().filter(|f| f.key == "ナビの中身" || f.key == "次の操作") {
+        assert!(!f.value.contains(&['°', '′', '″'][..]), "{}：{}＝{}", what, f.key, f.value);
+    }
+}
+
 #[test]
 fn textbook_navi_follows_the_whole_setup() {
     let mut sim = Simulator::new(Mode::Textbook, 2);
@@ -757,6 +765,11 @@ fn textbook_navi_follows_the_whole_setup() {
                     n.speech.chars().count(),
                     n.speech
                 );
+                assert_navi_facts_have_no_dms(&sim, "据付中のナビ");
+                // 押すボタンの名前が手順の名前と同じ手順2では、名前を1回だけ言う
+                if n.kind == NaviKind::Enter && step == 2 {
+                    assert_eq!(n.text.matches("器械を載せて定心桿で固定").count(), 1, "{}", n.text);
+                }
             }
         }
         let hint = sim.next_action();
@@ -854,10 +867,21 @@ fn english_screen_has_no_japanese_through_a_whole_run() {
             ja.frame(t, &[]);
             en.frame(t, &[]);
             let mut passed = false;
+            let mut last_navi = 0;
             for i in 0..40_000 {
                 assert_english(&en, &format!("{:?} seed {} 据付中", mode, seed));
                 if i % 25 == 0 {
                     assert_facts_fit(&en, "据付中の事実");
+                }
+                if let Some(n) = en.navi() {
+                    if n.id != last_navi {
+                        last_navi = n.id;
+                        assert_navi_facts_have_no_dms(&en, "英語のナビ");
+                        if n.kind == NaviKind::Enter && n.text.starts_with("Step 2") {
+                            let button = "Mount the instrument and fix it with the mounting screw";
+                            assert_eq!(n.text.matches(button).count(), 1, "{}", n.text);
+                        }
+                    }
                 }
                 let cmds = commands_for(&ja, &ja.next_action());
                 assert!(!cmds.is_empty(), "操作に直せない次の操作：{}", ja.next_action());
