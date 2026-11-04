@@ -2020,13 +2020,13 @@ impl Simulator {
             self.navi_goal_ok = goal_ok;
             self.navi_action_key = key.clone();
             self.navi_candidate = (key, now);
+            // 目標は操作盤に出ているので、読み上げでは言わない（長くなりすぎるため。AIには事実で渡す）
             let text = tr!(
                 self.lang,
-                "手順{}「{}」。目標は、{}。まずは、{}",
-                "Step {} \"{}\". Goal: {}. First, {}",
+                "手順{}「{}」。まずは、{}",
+                "Step {} \"{}\". First, {}",
                 step,
                 label,
-                goal,
                 lower_first(self.lang, &next)
             );
             self.push_navi(NaviKind::Enter, text, &goal, goal_ok, &next, true);

@@ -2,7 +2,7 @@
 //! AIには、ここで確かめた事実を言葉にさせるだけにする（正解はRust、言葉はAI）。
 
 use ts_core::coach::Fact;
-use ts_core::config::LEG_AZIMUTHS;
+use ts_core::config::{LEG_AZIMUTHS, NAVI_MAX_CHARS};
 use ts_core::instrument::Instrument;
 use ts_core::math::Vec3;
 use ts_core::sim::FactKind;
@@ -711,6 +711,10 @@ fn textbook_navi_starts_at_step_one_and_field_mode_has_none() {
     assert!(n.ai);
     assert!(n.text.starts_with("手順1"), "{}", n.text);
     assert!(!n.speech.contains('（'), "{}", n.speech);
+    // 目標は操作盤に出ているので、読み上げでは言わない（AIには事実で渡す）
+    assert!(!n.text.contains("目標"), "{}", n.text);
+    let facts = sim.ai_facts(FactKind::Navi).unwrap_or_default();
+    assert!(facts.iter().any(|f| f.key == "この手順の目標"));
     assert!(sim.ai_facts(FactKind::Navi).is_some());
     assert!(sim.ui_state().navi.is_some());
 
@@ -746,6 +750,13 @@ fn textbook_navi_follows_the_whole_setup() {
                 last_id = n.id;
                 let step = n.text.chars().nth(2).and_then(|c| c.to_digit(10)).unwrap_or(0) as u8;
                 seen.push((n.kind, step));
+                // 読み上げる文は、長さの目安に収める
+                assert!(
+                    n.speech.chars().count() <= NAVI_MAX_CHARS,
+                    "ナビが長すぎる（{}字）：{}",
+                    n.speech.chars().count(),
+                    n.speech
+                );
             }
         }
         let hint = sim.next_action();

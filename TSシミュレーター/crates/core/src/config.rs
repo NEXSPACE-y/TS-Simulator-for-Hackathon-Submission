@@ -291,3 +291,5 @@ pub const NAVI_STABLE_MS: f64 = 1_500.0;
 pub const NAVI_ACTION_GAP_MS: f64 = 6_000.0;
 /// 手順外の操作の注意を読む間隔の下限 [ms]
 pub const NAVI_WARNING_GAP_MS: f64 = 3_000.0;
+/// ナビの文（日本語）の長さの目安 [字]（オーナーの指定、2026-11-04）。コアの文はこれに収める
+pub const NAVI_MAX_CHARS: usize = 90;
