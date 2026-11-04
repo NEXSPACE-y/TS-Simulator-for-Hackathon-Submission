@@ -247,6 +247,22 @@ export function instructFallback(facts: readonly Fact[], lang?: 'en'): string {
   return `機械点は${names.station}、BSは${names.backsight}な。器械高は巻尺で測って入れといて。`;
 }
 
+/** ナビの返事の長さの上限（日本語はコアの NAVI_MAX_CHARS と同じ字数、英語は目安の語数） */
+export const NAVI_LIMIT = { chars: 90, words: 30 } as const;
+
+/** ナビの返事を、そのまま字幕に出して読み上げてよいか（改行が無く、長すぎない） */
+export function naviTextOk(text: string, lang?: 'en'): boolean {
+  // 改行があるのは、案内の文のほかに独り言などを書いたとき
+  if (/[\r\n]/.test(text)) return false;
+  if (lang === 'en') return text.trim().split(/\s+/).length <= NAVI_LIMIT.words;
+  return [...text].length <= NAVI_LIMIT.chars;
+}
+
+/** ナビの返事が使えないときに返す文（コアが作ったナビの文。事実の「ナビの中身」） */
+export function naviFallback(facts: readonly Fact[]): string {
+  return facts.find((f) => f.k === 'ナビの中身')?.v ?? '';
+}
+
 // ---------------------------------------------------------------------------
 // Claude API へのリクエスト
 // ---------------------------------------------------------------------------
@@ -391,6 +407,12 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   if (input.kind === 'instruct' && !instructTextOk(text, input.facts)) {
     // 点名が違う・足りない指示は出さず、決まった言い方にする
     text = instructFallback(input.facts, input.lang);
+  }
+  if (input.kind === 'navi' && !naviTextOk(text, input.lang)) {
+    // 改行がある・長すぎる返事は読まず、コアが作ったナビの文にする
+    const core = naviFallback(input.facts);
+    if (!core) return json(502, { ok: false, error: 'unavailable' }, cors);
+    text = core;
   }
   return json(200, { ok: true, text }, cors);
 }

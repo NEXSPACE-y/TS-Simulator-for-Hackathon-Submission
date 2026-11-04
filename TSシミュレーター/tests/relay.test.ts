@@ -1,8 +1,16 @@
 // AI先輩の中継（relay/api/ai.ts）の確認。本物の Claude API は呼ばず、fetch を差し替えて調べる。
 // 確かめること：決まった形のデータだけを通すこと、呼べる出どころを絞ること、APIキーは環境変数から送ること、
-// 指示の聞き取りで点名が違う文は出さないこと。
+// 指示の聞き取りで点名が違う文は出さないこと、ナビで崩れた返事は読ませないこと。
 import { describe, expect, it } from 'vitest';
-import { buildRequest, handle, instructFallback, instructTextOk, parseInput, type Deps } from '../relay/api/ai';
+import {
+  buildRequest,
+  handle,
+  instructFallback,
+  instructTextOk,
+  naviTextOk,
+  parseInput,
+  type Deps,
+} from '../relay/api/ai';
 
 const PAGES = 'https://nexspace-y.github.io';
 const facts = [
@@ -188,6 +196,39 @@ describe('中継の受け口', () => {
     expect(data.text).toContain('T-1');
     expect(data.text).toContain('T-2');
     expect(data.text).not.toContain('T-3');
+  });
+
+  it('ナビで、改行がある・長すぎる返事は読ませず、コアが作ったナビの文にする', async () => {
+    const core = 'Step 2. First, press "Mount the instrument and fix it with the mounting screw"';
+    const f = [
+      { k: 'いまの手順', v: '手順2「Mount the instrument and fix it with the mounting screw」（全7手順）' },
+      { k: 'ナビの中身', v: core },
+    ];
+    expect(naviTextOk('手順2だよ。まずは「器械を載せて定心桿で固定する」を押してね。')).toBe(true);
+    expect(naviTextOk('あ'.repeat(90))).toBe(true);
+    expect(naviTextOk('あ'.repeat(91))).toBe(false);
+    expect(naviTextOk(Array(30).fill('word').join(' '), 'en')).toBe(true);
+    expect(naviTextOk(Array(31).fill('word').join(' '), 'en')).toBe(false);
+    // 公開サイトの英語の手順2で、実際に返ってきた独り言つきの返事（字幕に出て、読み上げられた）
+    const leaked =
+      'Step 2, Mount the instrument and fix it with the mounting screw. Hit the button to continue, and it\'s time to get the instrument on the tripod.\n\n' +
+      'Hmm, the rule says the button name and step name are the same, so I should say the button name once only. Let me fix that.\n\n' +
+      'Step 2. First, press "Mount the instrument and fix it with the mounting screw."';
+    expect(naviTextOk(leaked, 'en')).toBe(false);
+    expect(naviTextOk('Step 2.\nPress "Next step"', 'en')).toBe(false);
+    const { d } = deps(textReply(leaked));
+    const bad = (await (await handle(post({ kind: 'navi', facts: f, lang: 'en' }, PAGES, '8.8.8.8'), d)).json()) as {
+      ok: boolean;
+      text: string;
+    };
+    expect(bad).toEqual({ ok: true, text: core });
+    // ちょうどよい返事は、そのまま返す
+    const good = 'Step 2. Press "Mount the instrument and fix it with the mounting screw" to go ahead.';
+    const { d: d2 } = deps(textReply(good));
+    const ok = (await (await handle(post({ kind: 'navi', facts: f, lang: 'en' }, PAGES, '9.9.9.9'), d2)).json()) as {
+      text: string;
+    };
+    expect(ok.text).toBe(good);
   });
 });
 
