@@ -10,8 +10,11 @@ import { useT, type Lang } from './i18n';
 import { speak, stopSpeech } from './speech';
 
 const VOICE_KEY = 'ts-sim-navi-voice';
-/** ナビの言い方を待つ時間の上限 [ms]（これを過ぎたらコアの文を読む） */
-const NAVI_AI_TIMEOUT_MS = 6_000;
+/**
+ * ナビの言い方を待つ時間の上限 [ms]（これを過ぎたらコアの文を読む）。
+ * 英語はAIの返事が日本語の倍ほどかかる（3〜6秒）ので、長めに待つ（仮）
+ */
+const NAVI_AI_TIMEOUT_MS: Record<Lang, number> = { ja: 6_000, en: 10_000 };
 
 function loadVoice(): boolean {
   try {
@@ -41,7 +44,7 @@ interface Cue {
 async function resolveText(cue: Cue): Promise<string> {
   if (!cue.ai || !cue.facts) return cue.speech;
   const ctl = new AbortController();
-  const t = window.setTimeout(() => ctl.abort(), NAVI_AI_TIMEOUT_MS);
+  const t = window.setTimeout(() => ctl.abort(), NAVI_AI_TIMEOUT_MS[cue.lang]);
   try {
     const r = await askSenpai('navi', cue.facts, undefined, ctl.signal, cue.lang);
     return r.ok ? r.text : cue.speech;
