@@ -68,15 +68,15 @@ describe('中継が受け付ける形', () => {
     ).not.toBeNull();
   });
 
-  it('教科書モードのナビは、考える時間を取らずに答えるモデルで、読み上げ向けの指示をつける', () => {
+  it('教科書モードのナビは、速さ優先の小さいモデルで、読み上げ向けの指示をつける', () => {
     const input = parseInput({ kind: 'navi', facts });
     if (!input) throw new Error('通るはず');
     const body = buildRequest(input) as { model: string; system: string; fallbacks?: unknown; thinking?: unknown };
-    expect(body.model).toBe('claude-sonnet-5-5');
+    expect(body.model).toBe('claude-haiku-5-5');
     expect(body.fallbacks).toBeUndefined();
     expect(body.system).toContain('音声で読み上げる');
-    // 言い直すだけなので、考える時間を取らずに答える（Sonnet 5.5 の止め方。ほかの種類は今までどおり）
-    expect(body.thinking).toEqual({ type: 'between_tools' });
+    // 言い直すだけなので、考える時間を取らずに答える（ほかの種類は今までどおり）
+    expect(body.thinking).toEqual({ type: 'disabled' });
     const advice = parseInput({ kind: 'advice', facts });
     if (!advice) throw new Error('通るはず');
     expect((buildRequest(advice) as { thinking?: unknown }).thinking).toBeUndefined();

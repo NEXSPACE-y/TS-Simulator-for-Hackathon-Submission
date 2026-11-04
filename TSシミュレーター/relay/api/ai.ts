@@ -90,11 +90,8 @@ interface KindSetting {
   maxTokens: number;
   /** 断られたとき別のモデルでやり直す（Haiku には無い） */
   fallbacks: boolean;
-  /**
-   * 考える時間を取らずに答える（指定しないと、effort が low でも考えてから答える）。
-   * 止め方はモデルで違う：Haiku 5.5 は disabled、Sonnet 5.5 は between_tools（disabled はエラーになる）
-   */
-  thinking?: 'disabled' | 'between_tools';
+  /** 考える時間を取らずに答える（Haiku 5.5 は effort が low でも、指定しないと考えてから答える） */
+  noThinking?: true;
   task: string;
   /** 画面が英語のときだけ足す、この種類の決まり */
   en?: string;
@@ -154,14 +151,12 @@ ${TIPS}`,
 - 40〜80字、1〜2文。責めない。`,
   },
   navi: {
-    // Haiku は考えずに答えると、用語・ボタンの名前・長さの決まりが崩れることがあったので、Sonnet にする（仮）
-    model: 'claude-sonnet-5-5',
+    model: 'claude-haiku-5-5',
     effort: 'low',
     maxTokens: 2000,
-    // between_tools は Sonnet 5.5 にしか使えないので、別のモデルでのやり直しはしない
     fallbacks: false,
     // 中身はコアが決めていて、言い直すだけなので、考えずに速く答える
-    thinking: 'between_tools',
+    noThinking: true,
     task: `教科書モードのナビ役として、いまの手順を案内する。答えは、そのまま音声で読み上げる。
 - 事実の「ナビの中身」を、先輩の話し言葉で、1〜2文・80字以内に言い直す。
 - 手順の番号・向き・ネジや脚の名前・押すボタンの名前は変えない。中身にないことは足さない。
@@ -272,7 +267,7 @@ export function buildRequest(input: AiInput): Record<string, unknown> {
     messages: [{ role: 'user', content }],
   };
   if (s.fallbacks) body.fallbacks = 'default';
-  if (s.thinking) body.thinking = { type: s.thinking };
+  if (s.noThinking) body.thinking = { type: 'disabled' };
   return body;
 }
 
