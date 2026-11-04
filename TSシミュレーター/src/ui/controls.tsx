@@ -301,7 +301,7 @@ export function ScrewControls(props: { disabled?: boolean }) {
           ]}
         >
           {t.abIn}
-          <small>S＋K</small>
+          <small>{t.keyPair('S', 'K')}</small>
         </PairButton>
         <PairButton
           disabled={props.disabled}
@@ -311,7 +311,7 @@ export function ScrewControls(props: { disabled?: boolean }) {
           ]}
         >
           {t.abOut}
-          <small>A＋L</small>
+          <small>{t.keyPair('A', 'L')}</small>
         </PairButton>
       </div>
       <p className="note">{t.leftThumbRule}</p>
