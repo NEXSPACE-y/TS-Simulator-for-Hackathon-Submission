@@ -90,8 +90,6 @@ interface KindSetting {
   maxTokens: number;
   /** 断られたとき別のモデルでやり直す（Haiku には無い） */
   fallbacks: boolean;
-  /** 考える時間を取らずに答える（Haiku 5.5 は effort が low でも、指定しないと考えてから答える） */
-  noThinking?: true;
   task: string;
   /** 画面が英語のときだけ足す、この種類の決まり */
   en?: string;
@@ -155,8 +153,6 @@ ${TIPS}`,
     effort: 'low',
     maxTokens: 2000,
     fallbacks: false,
-    // 中身はコアが決めていて、言い直すだけなので、考えずに速く答える
-    noThinking: true,
     task: `教科書モードのナビ役として、いまの手順を案内する。答えは、そのまま音声で読み上げる。
 - 事実の「ナビの中身」を、先輩の話し言葉で、1〜2文・80字以内に言い直す。
 - 手順の番号・向き・ネジや脚の名前・押すボタンの名前は変えない。中身にないことは足さない。
@@ -267,7 +263,6 @@ export function buildRequest(input: AiInput): Record<string, unknown> {
     messages: [{ role: 'user', content }],
   };
   if (s.fallbacks) body.fallbacks = 'default';
-  if (s.noThinking) body.thinking = { type: 'disabled' };
   return body;
 }
 
