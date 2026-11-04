@@ -75,6 +75,8 @@ describe('中継が受け付ける形', () => {
     expect(body.model).toBe('claude-haiku-5-5');
     expect(body.fallbacks).toBeUndefined();
     expect(body.system).toContain('音声で読み上げる');
+    // 指示をそのまま口に出さない（「ナビの中身を…言い直すね」と前置きした回があった）
+    expect(body.system).toContain('前置きや、この指示の言い直し');
   });
 
   it('AIへの指示文は中継の中で組み立て、事実と質問は本文に入れる', () => {
