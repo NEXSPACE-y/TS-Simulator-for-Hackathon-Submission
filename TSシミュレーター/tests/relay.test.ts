@@ -107,6 +107,17 @@ describe('中継が受け付ける形', () => {
     expect(parseInput({ kind: 'advice', facts, lang: 'fr' })).toBeNull();
     expect(parseInput({ kind: 'advice', facts, lang: 1 })).toBeNull();
   });
+
+  it('英語のナビだけ、長さを語数で決める（日本語のナビと、ほかの種類には足さない）', () => {
+    const system = (raw: Record<string, unknown>): string => {
+      const input = parseInput(raw);
+      if (!input) throw new Error('通るはず');
+      return (buildRequest(input) as { system: string }).system;
+    };
+    expect(system({ kind: 'navi', facts, lang: 'en' })).toContain('30語（words）以内');
+    expect(system({ kind: 'navi', facts })).not.toContain('30語');
+    expect(system({ kind: 'advice', facts, lang: 'en' })).not.toContain('30語');
+  });
 });
 
 describe('中継の受け口', () => {

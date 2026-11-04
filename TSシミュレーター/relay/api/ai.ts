@@ -93,6 +93,8 @@ interface KindSetting {
   /** 考える時間を取らずに答える（Haiku 5.5 は effort が low でも、指定しないと考えてから答える） */
   noThinking?: true;
   task: string;
+  /** 画面が英語のときだけ足す、この種類の決まり */
+  en?: string;
 }
 
 const SETTINGS: Record<AiKind, KindSetting> = {
@@ -159,6 +161,8 @@ ${TIPS}`,
 - 事実の「ナビの中身」を、先輩の話し言葉で、1〜2文・80字以内に言い直す。
 - 手順の番号・向き・ネジや脚の名前・押すボタンの名前は変えない。中身にないことは足さない。
 - 読み上げるので、記号・かっこ・度分秒の数値は使わない。`,
+    // 考えずに答えると、英語は「字数の2倍まで」を守りにくい（3倍を超えることがある）ので、語数で決める（仮）
+    en: '- 英語のナビは、1〜2文・30語（words）以内にする。入りきらないときは、手順の番号と「次の操作」を残し、目標は省く。',
   },
 };
 
@@ -255,7 +259,10 @@ export function buildRequest(input: AiInput): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: s.model,
     max_tokens: s.maxTokens,
-    system: input.lang === 'en' ? `${COMMON}\n\n${s.task}\n\n${ENGLISH}` : `${COMMON}\n\n${s.task}`,
+    system:
+      input.lang === 'en'
+        ? `${COMMON}\n\n${s.task}\n\n${ENGLISH}${s.en ? `\n${s.en}` : ''}`
+        : `${COMMON}\n\n${s.task}`,
     output_config: { effort: s.effort },
     messages: [{ role: 'user', content }],
   };
