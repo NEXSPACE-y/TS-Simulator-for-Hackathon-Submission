@@ -1,10 +1,10 @@
-// AI先輩の中継（Vercel Functions）。Web版（GitHub Pages）とデスクトップ版（Tauri）から呼ばれ、Claude API に取り次ぐ。
+// AI先輩の中継（Vercel Functions）。Web版（GitHub Pages）から呼ばれ、Claude API に取り次ぐ。
 //
 // - APIキーは Vercel の環境変数 ANTHROPIC_API_KEY にだけ置く（コードにもブラウザにも出さない）
 // - 受け付けるのは決まった形のデータだけ。AIへの指示文は、この中で組み立てる
 // - 数値・判定・操作の向きは、シミュレーター（Rustのコア）が出した「事実」だけを使わせる。AIには言葉にさせるだけ
 //   （正解はRust、言葉はAI）
-// - 呼べるのは Pages と Tauri の出どころだけ（環境変数 AI_ALLOWED_ORIGINS で、カンマ区切りで足せる）
+// - 呼べるのは Pages の出どころだけ（環境変数 AI_ALLOWED_ORIGINS で、カンマ区切りで足せる）
 // - 依存関係を増やさないため、Anthropic の SDK は使わず fetch で呼ぶ
 
 export type AiKind = 'review' | 'ask' | 'explain' | 'instruct' | 'advice' | 'navi';
@@ -42,13 +42,7 @@ const ANTHROPIC_VERSION = '2026-10-21';
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 const UPSTREAM_TIMEOUT_MS = 25_000;
 
-const DEFAULT_ORIGINS = [
-  'https://nexspace-y.github.io',
-  // Tauri（デスクトップ版）：macOS は tauri://localhost、Windows は http(s)://tauri.localhost
-  'tauri://localhost',
-  'http://tauri.localhost',
-  'https://tauri.localhost',
-];
+const DEFAULT_ORIGINS = ['https://nexspace-y.github.io'];
 
 const KINDS: readonly AiKind[] = ['review', 'ask', 'explain', 'instruct', 'advice', 'navi'];
 

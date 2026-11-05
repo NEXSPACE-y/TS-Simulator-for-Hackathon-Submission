@@ -61,11 +61,11 @@
 
 ### 14.6 中継（Vercel Functions）
 
-- Web版は GitHub Pages のまま。Claude API を呼ぶ中継だけを Vercel Functions（`relay/`）に置く。デスクトップ版も同じ中継を呼ぶ（Tauri の CSP は今は指定なしなので、変更は不要）。
+- Web版は GitHub Pages のまま。Claude API を呼ぶ中継だけを Vercel Functions（`relay/`）に置く。
 - **APIキーはオーナーが Vercel の環境変数 `ANTHROPIC_API_KEY` に登録する。Claude は扱わない。** コードやブラウザには出さない。
 - 中継が受け付けるのは決まった形だけ：種類（5つ）、事実（60件まで。見出し40字・値240字まで）、質問（何でも質問のときだけ。200字まで）。それ以外の項目があれば断る。
 - AIへの指示文（口調・コツ・言い回し）は中継の中で組み立てる。返事の長さ（max_tokens）にも上限を付ける。
-- 呼べる出どころ：`https://nexspace-y.github.io` と Tauri（`tauri://localhost`、`http(s)://tauri.localhost`）。環境変数 `AI_ALLOWED_ORIGINS` で足せる（開発中の `http://localhost:5173` など）。
+- 呼べる出どころ：`https://nexspace-y.github.io` だけ（デスクトップアプリ版の廃止に合わせて、Tauri の出どころは外した）。環境変数 `AI_ALLOWED_ORIGINS` で足せる（開発中の `http://localhost:5173` など）。
 - 同じ出どころ（IP）から1分に20回まで（中継の実体が使い回される間だけ効く、簡単な歯止め）。本当の歯止めは、オーナーが Anthropic Console で設定する利用上限。
 - 断られたとき（安全のための判定）は、Claude API の機能で別のモデルでやり直してもらう（Opus・Sonnet のみ。Haiku には無い）。それでも断られたら「答えられませんでした」と出す。
 - エラーの中身は外に出さない。

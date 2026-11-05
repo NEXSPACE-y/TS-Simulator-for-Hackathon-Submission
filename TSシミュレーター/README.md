@@ -124,7 +124,7 @@ AI先輩（Claude）は、`relay/` の中継を通して呼びます。Web版は
 2. Vercel のプロジェクトの Environment Variables に `ANTHROPIC_API_KEY`（Anthropic Console で作ったキー）を登録して、もう一度公開する
 3. Anthropic Console で、月の利用上限を設定する（使いすぎを止める一番確かな歯止め）
 
-- 呼べる出どころは、Web版（`https://nexspace-y.github.io`）と、廃止したデスクトップ版（Tauri）のものだけです。開発サーバー（`npm run dev`）から試すときは、Vercel の環境変数 `AI_ALLOWED_ORIGINS` に `http://localhost:5173` を足します。
+- 呼べる出どころは、Web版（`https://nexspace-y.github.io`）だけです。開発サーバー（`npm run dev`）から試すときは、Vercel の環境変数 `AI_ALLOWED_ORIGINS` に `http://localhost:5173` を足します。
 - 同じ出どころ（IP）からは1分に20回までにしています（簡単な歯止め）。
 
 ## 素材と表記

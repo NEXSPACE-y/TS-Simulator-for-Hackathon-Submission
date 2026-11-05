@@ -142,6 +142,8 @@ describe('中継の受け口', () => {
     const ng = await handle(post({ kind: 'review', facts }, 'https://evil.example'), d);
     expect(ng.status).toBe(403);
     expect(ng.headers.get('access-control-allow-origin')).toBeNull();
+    // デスクトップアプリ版（Tauri）は廃止したので、その出どころも断る
+    expect((await handle(post({ kind: 'review', facts }, 'tauri://localhost'), d)).status).toBe(403);
   });
 
   it('APIキーが登録されていなければ、使えないと返す（Claude API は呼ばない）', async () => {
