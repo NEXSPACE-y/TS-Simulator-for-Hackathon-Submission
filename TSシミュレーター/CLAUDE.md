@@ -21,14 +21,13 @@ Built with Claude: Japan 2026 の出展作品。**仕様はすべて `docs/SPEC.
 - 表示側：TypeScript / React / Three.js / Vite
 - テスト：`cargo test`（物理・判定・計算）、Vitest（WASMとのつなぎ目のみ）
 - UIパネルはReact。3D描画はThree.jsを直接使う（**React Three Fiberは使わない**）
-- デスクトップ版：Tauri 2（`src-tauri/`）。Web版と同じWASMをWebView内で動かす
-- Web版はVercel、デスクトップ版はGitHub Actionsでビルド
+- Web版はVercel（デスクトップアプリ版は廃止。2026-11-05）
 - Rustの版は `rust-toolchain.toml` で固定する
 
 ## ディレクトリ
 ```
 crates/
-  core/     状態・物理・判定・観測の計算・タイマー（純粋なRust。WASM・Tauri・ブラウザに依存しない）
+  core/     状態・物理・判定・観測の計算・タイマー（純粋なRust。WASM・ブラウザに依存しない）
   wasm/     coreをTypeScriptに公開する薄い層（wasm-bindgen）。計算は書かない
 src/
   bridge/   WASMの読み込みと呼び出し（TypeScriptからコアに触る窓口はここだけ）
@@ -36,13 +35,12 @@ src/
   ui/       画面のパネル（React。上部・左・右・結果画面）
   main.tsx  起動処理
 tests/      Vitest（WASMとのつなぎ目の確認）
-src-tauri/  デスクトップ版（Tauri）
 docs/       仕様書
 ```
 
 ## 設計の決まりごと
 - **物理・判定・座標計算はすべて `crates/core` に書く。** TypeScript側（`src/`）には計算を書かない。`render` と `ui` はコアの結果を表示するだけ。
-- **`crates/wasm` と `src-tauri/` に計算ロジックを書かない。** `wasm` は受け渡しだけ、Tauri側はOS固有の処理だけ。Tauri側からcoreを直接呼ばない（Web版と挙動が分かれるため）。
+- **`crates/wasm` に計算ロジックを書かない。** `wasm` は受け渡しだけ。
 - `crates/core` では**panicさせない**。`unwrap()`・`expect()` は使わず、失敗は値（`Result`など）で返す。`unsafe` は使わない。
 - **`src/render/` にReactを持ち込まない。** Three.jsの描画ループはReactから切り離す。
 - `src/` からWASMを呼ぶのは `src/bridge/` だけ。WASMとのやり取りは**1フレームにつき「操作を渡す」「結果をまとめて受け取る」の最小限**にする。
@@ -72,7 +70,6 @@ npm run dev          開発サーバー
 npm run build        Web版のビルド（WASMのビルドを含む）
 cargo test           コアのテスト
 npm test             Vitest（つなぎ目の確認）
-npm run tauri dev    デスクトップ版の開発起動
 ```
 ※ 骨組みを作ったときに、実際のコマンドと一致しているか確認して更新すること（この変更は許可不要）。
 
