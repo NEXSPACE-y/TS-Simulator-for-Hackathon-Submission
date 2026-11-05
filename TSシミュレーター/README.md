@@ -97,7 +97,6 @@ src/
   main.tsx  起動処理
 relay/      AI先輩の中継（Vercel Functions。APIキーはここの環境変数にだけ置く）
 tests/      Vitest（WASMとのつなぎ目、AIの中継の確認）
-src-tauri/  デスクトップ版（廃止。いまは使っていない）
 ```
 
 - 物理・判定・座標計算はすべて `crates/core` にあります。許容値などの数値は `crates/core/src/config.rs` の1か所にまとめています。
@@ -113,7 +112,7 @@ src-tauri/  デスクトップ版（廃止。いまは使っていない）
 
 - Web版：GitHub Pages。`main` に push すると、`.github/workflows/pages.yml` でビルドして公開します（リポジトリの Settings → Pages → Source を「GitHub Actions」にしておく）。
 - `main` への push と pull request では、`.github/workflows/ci.yml` でテストとビルドを確かめます。
-- デスクトップ版（Tauri）は廃止しました。`src-tauri/` と `.github/workflows/desktop.yml` は残っていますが、使っていません。
+- デスクトップアプリ版（Tauri）は廃止し、ソースも消しました。Web版だけを公開しています。
 
 ### AI先輩の中継（Vercel Functions）
 
@@ -130,7 +129,7 @@ AI先輩（Claude）は、`relay/` の中継を通して呼びます。Web版は
 
 ## 素材と表記
 
-- 外部の画像・3Dモデル・フォント・音声などの素材は使っていません。地面・測点・ターゲットなどの質感と、アプリのアイコンは、すべてプログラムで描いています。読み上げは端末の音声合成です。
+- 外部の画像・3Dモデル・フォント・音声などの素材は使っていません。地面・測点・ターゲットなどの質感は、すべてプログラムで描いています。読み上げは端末の音声合成です。
 - 画像生成など、Claude 以外の AI を使った素材はありません。
 - 既知点・設計点の座標はすべて架空のものです。実在の現場の座標ではありません。
 - TS本体・電子平板の画面は、特定メーカーの製品に似せていません。ロゴ・メーカー名は入れていません。
