@@ -123,19 +123,19 @@ pub fn observation_steps() -> [StepText; 3] {
             label: "電子平板で機械点とBSをセット",
             short: "機械点とBSをセット",
             label_en: "Set the station and backsight on the tablet",
-            short_en: "Set station & BS",
+            short_en: "Set station & backsight",
         },
         StepText {
             label: "BSを視準して測量",
             short: "BSを測量",
             label_en: "Sight the backsight and measure",
-            short_en: "Measure BS",
+            short_en: "Measure backsight",
         },
         StepText {
             label: "FSのプリズムを視準して測量",
             short: "FSを測量",
             label_en: "Sight the foresight prism and measure",
-            short_en: "Measure FS",
+            short_en: "Measure foresight",
         },
     ]
 }
