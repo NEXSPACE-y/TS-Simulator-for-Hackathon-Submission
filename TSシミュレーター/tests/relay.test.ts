@@ -230,6 +230,30 @@ describe('中継の受け口', () => {
     };
     expect(ok.text).toBe(good);
   });
+
+  it('ナビで、度分秒の記号がある返事は読ませず、コアが作ったナビの文にする', async () => {
+    const core = '手順5「整準ネジで精密に整準」。まずは、整準ネジCを、親指を右へ動かす向きに回す';
+    const f = [
+      { k: 'いまの手順', v: '手順5「整準ネジで精密に整準」（全7手順）' },
+      { k: 'この手順の目標', v: '整準ネジで、電子気泡をX・Yとも±15″以内にする（まだ）' },
+      { k: 'ナビの中身', v: core },
+    ];
+    expect(naviTextOk('脚頭の傾きを2°以内にしよう')).toBe(false);
+    expect(naviTextOk('電子気泡を1′以内にしよう')).toBe(false);
+    expect(naviTextOk('Bring the bubble within ±15″ on both X and Y', 'en')).toBe(false);
+    // 英語のボタンの名前のかっこ（"）は、度分秒の記号ではないので通す
+    expect(naviTextOk('Step 2. Press "Next step"', 'en')).toBe(true);
+    // 公開サイトの日本語の手順5で、実際に返ってきた返事（目標の許容値を足して、読み上げられた）
+    const leaked =
+      '手順5だよ。整準ネジCを、親指を右へ動かす向きに回してね。まずはそこからで、電子気泡が±15″以内に入るまで少しずつ調整しよう。';
+    expect(naviTextOk(leaked)).toBe(false);
+    const { d } = deps(textReply(leaked));
+    const bad = (await (await handle(post({ kind: 'navi', facts: f }, PAGES, '10.10.10.10'), d)).json()) as {
+      ok: boolean;
+      text: string;
+    };
+    expect(bad).toEqual({ ok: true, text: core });
+  });
 });
 
 describe('中継の英語', () => {

@@ -250,10 +250,12 @@ export function instructFallback(facts: readonly Fact[], lang?: 'en'): string {
 /** ナビの返事の長さの上限（日本語はコアの NAVI_MAX_CHARS と同じ字数、英語は目安の語数） */
 export const NAVI_LIMIT = { chars: 90, words: 30 } as const;
 
-/** ナビの返事を、そのまま字幕に出して読み上げてよいか（改行が無く、長すぎない） */
+/** ナビの返事を、そのまま字幕に出して読み上げてよいか（改行・度分秒の記号が無く、長すぎない） */
 export function naviTextOk(text: string, lang?: 'en'): boolean {
   // 改行があるのは、案内の文のほかに独り言などを書いたとき
   if (/[\r\n]/.test(text)) return false;
+  // 度分秒の記号があるのは、目標の許容値（±15″など）を足したとき（読み上げでは使わない決まり）
+  if (/[°′″]/.test(text)) return false;
   if (lang === 'en') return text.trim().split(/\s+/).length <= NAVI_LIMIT.words;
   return [...text].length <= NAVI_LIMIT.chars;
 }
@@ -409,7 +411,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     text = instructFallback(input.facts, input.lang);
   }
   if (input.kind === 'navi' && !naviTextOk(text, input.lang)) {
-    // 改行がある・長すぎる返事は読まず、コアが作ったナビの文にする
+    // 改行・度分秒の記号がある、長すぎる返事は読まず、コアが作ったナビの文にする
     const core = naviFallback(input.facts);
     if (!core) return json(502, { ok: false, error: 'unavailable' }, cors);
     text = core;
