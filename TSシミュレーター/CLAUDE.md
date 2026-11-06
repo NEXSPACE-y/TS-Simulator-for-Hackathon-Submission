@@ -21,7 +21,7 @@ Built with Claude: Japan 2026 の出展作品。**仕様はすべて `docs/SPEC.
 - 表示側：TypeScript / React / Three.js / Vite
 - テスト：`cargo test`（物理・判定・計算）、Vitest（WASMとのつなぎ目のみ）
 - UIパネルはReact。3D描画はThree.jsを直接使う（**React Three Fiberは使わない**）
-- Web版はVercel（デスクトップアプリ版は廃止。2026-11-05）
+- Web版は GitHub Pages、AI先輩の中継は Vercel Functions（デスクトップアプリ版は廃止。2026-11-05）
 - Rustの版は `rust-toolchain.toml` で固定する
 
 ## ディレクトリ
