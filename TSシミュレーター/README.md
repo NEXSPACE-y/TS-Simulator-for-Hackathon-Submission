@@ -6,6 +6,8 @@ Built with Claude: Japan 2026 の出展作品です。仕様は [SPEC.md](SPEC.m
 **Web版：https://nexspace-y.github.io/TS-Simulator-for-Hackathon-Submission/**
 （インストールは要りません。URL を開くだけで動きます）
 
+**デモ動画（2分53秒）：https://youtu.be/Tx0SU_8HTSQ**
+
 - 作品の核：求心と整準の「片方を直すと、もう片方がズレる」ループ（手順6⇄7）を、実機に近い感覚で再現すること
 - 計算のコアは Rust で書き、WebAssembly（WASM）にしてブラウザで動かします。TypeScript 側は表示だけです
 - AI先輩（Claude）が、講評・質問への答え・計算の解説・現場の指示・声のナビをします。合否と数値はコアが決め、AIは言葉にするだけです
